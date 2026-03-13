@@ -17,9 +17,9 @@ import net.irisshaders.iris.shaderpack.ShaderPack;
 import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.transforms.SmoothedFloat;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
@@ -133,7 +133,7 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 	}
 
 	@Override
-	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float delta) {
+	public void extractRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float delta) {
 		notifier.onNewFrame();
 		backgroundInit = 1.0f;
 
@@ -162,15 +162,15 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		}
 
 		if (!this.guiHidden) {
-			super.render(guiGraphics, mouseX, mouseY, delta);
+			super.extractRenderState(guiGraphics, mouseX, mouseY, delta);
 
 			if (optionMenuOpen && this.shaderOptionList != null) {
-				this.shaderOptionList.render(guiGraphics, mouseX, mouseY, delta);
+				this.shaderOptionList.extractRenderState(guiGraphics, mouseX, mouseY, delta);
 			} else {
-				this.shaderPackList.render(guiGraphics, mouseX, mouseY, delta);
+				this.shaderPackList.extractRenderState(guiGraphics, mouseX, mouseY, delta);
 			}
 		} else {
-			this.showHideButton.render(guiGraphics, mouseX, mouseY, delta);
+			this.showHideButton.extractRenderState(guiGraphics, mouseX, mouseY, delta);
 		}
 
 		float previousHoverTimer = this.guiButtonHoverTimer;
@@ -179,15 +179,15 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		}
 
 		if (!this.guiHidden) {
-			guiGraphics.drawCenteredString(this.font, this.title, (int) (this.width * 0.5), 8, 0xFFFFFFFF);
+			guiGraphics.centeredText(this.font, this.title, (int) (this.width * 0.5), 8, 0xFFFFFFFF);
 
 			if (notificationDialog != null && notificationDialogTimer > 0) {
-				guiGraphics.drawCenteredString(this.font, notificationDialog, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
+				guiGraphics.centeredText(this.font, notificationDialog, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
 			} else {
 				if (optionMenuOpen) {
-					guiGraphics.drawCenteredString(this.font, CONFIGURE_TITLE, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
+					guiGraphics.centeredText(this.font, CONFIGURE_TITLE, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
 				} else {
-					guiGraphics.drawCenteredString(this.font, SELECT_TITLE, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
+					guiGraphics.centeredText(this.font, SELECT_TITLE, (int) (this.width * 0.5), 21, 0xFFFFFFFF);
 				}
 			}
 
@@ -200,9 +200,9 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 				// Draw panel
 				GuiUtil.drawPanel(guiGraphics, x, y, COMMENT_PANEL_WIDTH, panelHeight);
 				// Draw text
-				guiGraphics.drawString(font, this.hoveredElementCommentTitle.orElse(Component.empty()), x + 4, y + 4, 0xFFFFFFFF);
+				guiGraphics.text(font, this.hoveredElementCommentTitle.orElse(Component.empty()), x + 4, y + 4, 0xFFFFFFFF);
 				for (int i = 0; i < this.hoveredElementCommentBody.size(); i++) {
-					guiGraphics.drawString(font, this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFFFF);
+					guiGraphics.text(font, this.hoveredElementCommentBody.get(i), x + 4, (y + 16) + (i * 10), 0xFFFFFFFF);
 				}
 			}
 		}
@@ -214,13 +214,13 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		TOP_LAYER_RENDER_QUEUE.clear();
 
 		if (this.developmentComponent != null) {
-			guiGraphics.drawString(font, developmentComponent, 2, this.height - 10, 0xFFFFFFFF);
-			guiGraphics.drawString(font, irisTextComponent, 2, this.height - 20, 0xFFFFFFFF);
+			guiGraphics.text(font, developmentComponent, 2, this.height - 10, 0xFFFFFFFF);
+			guiGraphics.text(font, irisTextComponent, 2, this.height - 20, 0xFFFFFFFF);
 		} else if (this.updateComponent != null) {
-			guiGraphics.drawString(font, updateComponent, 2, this.height - 10, 0xFFFFFFFF);
-			guiGraphics.drawString(font, irisTextComponent, 2, this.height - 20, 0xFFFFFFFF);
+			guiGraphics.text(font, updateComponent, 2, this.height - 10, 0xFFFFFFFF);
+			guiGraphics.text(font, irisTextComponent, 2, this.height - 20, 0xFFFFFFFF);
 		} else {
-			guiGraphics.drawString(font, irisTextComponent, 2, this.height - 10, 0xFFFFFFFF);
+			guiGraphics.text(font, irisTextComponent, 2, this.height - 10, 0xFFFFFFFF);
 		}
 	}
 

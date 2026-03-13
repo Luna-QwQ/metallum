@@ -15,7 +15,7 @@ import net.irisshaders.iris.shaderpack.option.menu.OptionMenuContainer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.ContainerObjectSelectionList;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarratableEntry;
@@ -81,7 +81,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 	}
 
 	@Override
-	protected void renderListBackground(GuiGraphics pAbstractSelectionList0) {
+	protected void extractListBackground(GuiGraphicsExtractor pAbstractSelectionList0) {
 		float transition = screen.listTransition.getAsFloat();
 		//RenderSystem.enableBlend();
 		// TODO 1.21.6
@@ -97,7 +97,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 	}
 
 	@Override
-	protected void renderListSeparators(GuiGraphics pAbstractSelectionList0) {
+	protected void extractListSeparators(GuiGraphicsExtractor pAbstractSelectionList0) {
 		float transition = screen.listTransition.getAsFloat();
 		if (transition < 0.02f) return;
 		//if (transition < 0.99f) pAbstractSelectionList0.flush();
@@ -165,7 +165,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 		}
 
 		@Override
-		public void renderContent(GuiGraphics guiGraphics, int mouseX, int mouseY, boolean isHovered, float tickDelta) {
+		public void extractContent(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, boolean isHovered, float tickDelta) {
 			this.cachedWidth = getContentWidth();
 			this.cachedPosX = getContentX();
 
@@ -267,7 +267,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 		}
 
 		@Override
-		public void renderContent(GuiGraphics guiGraphics, int mouseX, int mouseY, boolean isHovered, float tickDelta) {
+		public void extractContent(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, boolean isHovered, float tickDelta) {
 			// Draw dividing line
 			int x = getX();
 			int y = getY();
@@ -311,7 +311,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 			}
 		}
 
-		private void queueBottomRightAnchoredTooltip(GuiGraphics guiGraphics, int x, int y, Font font, Component text) {
+		private void queueBottomRightAnchoredTooltip(GuiGraphicsExtractor guiGraphics, int x, int y, Font font, Component text) {
 			ShaderPackScreen.TOP_LAYER_RENDER_QUEUE.add(() -> GuiUtil.drawTextPanel(
 				font, guiGraphics, text,
 				x - (font.width(text) + 10), y - 16

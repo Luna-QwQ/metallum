@@ -2,7 +2,7 @@ package net.irisshaders.iris.gui;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -78,7 +78,7 @@ public class OldImageButton extends Button {
 	}
 
 	@Override
-	public void renderContents(GuiGraphics pImageButton0, int pInt1, int pInt2, float pFloat3) {
+	public void extractContents(GuiGraphicsExtractor pImageButton0, int pInt1, int pInt2, float pFloat3) {
 		this.renderTexture(
 			pImageButton0,
 			this.Identifier,
@@ -95,7 +95,7 @@ public class OldImageButton extends Button {
 	}
 
 	public void renderTexture(
-		GuiGraphics pAbstractWidget0,
+		GuiGraphicsExtractor pAbstractWidget0,
 		Identifier pIdentifier1,
 		int pInt2,
 		int pInt3,

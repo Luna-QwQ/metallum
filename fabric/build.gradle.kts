@@ -1,7 +1,7 @@
 plugins {
     id("java")
     id("idea")
-    id("net.fabricmc.fabric-loom") version("1.15.1")
+    id("net.fabricmc.fabric-loom") version("1.15.4")
 }
 
 evaluationDependsOn(":common")

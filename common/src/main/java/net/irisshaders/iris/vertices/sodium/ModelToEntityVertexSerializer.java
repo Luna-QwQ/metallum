@@ -10,6 +10,9 @@ import net.irisshaders.iris.vertices.NormalHelper;
 import org.lwjgl.system.MemoryUtil;
 
 public class ModelToEntityVertexSerializer implements VertexSerializer {
+	private static final int MIDCOORD = IrisVertexFormats.ENTITY.getOffset(IrisVertexFormats.MID_TEXTURE_ELEMENT);
+	private static final int TANGENT = IrisVertexFormats.ENTITY.getOffset(IrisVertexFormats.TANGENT_ELEMENT);
+
 	@Override
 	public void serialize(long src, long dst, int vertexCount) {
 		// Only accept quads, to be safe
@@ -33,9 +36,9 @@ public class ModelToEntityVertexSerializer implements VertexSerializer {
 				MemoryUtil.memPutShort(dst + 36, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedEntity());
 				MemoryUtil.memPutShort(dst + 38, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedBlockEntity());
 				MemoryUtil.memPutShort(dst + 40, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedItem());
-				MemoryUtil.memPutFloat(dst + 42, midU);
-				MemoryUtil.memPutFloat(dst + 46, midV);
-				MemoryUtil.memPutInt(dst + 50, tangent);
+				MemoryUtil.memPutFloat(dst + MIDCOORD, midU);
+				MemoryUtil.memPutFloat(dst + MIDCOORD + 4, midV);
+				MemoryUtil.memPutInt(dst + TANGENT, tangent);
 
 				src += EntityVertex.STRIDE;
 				dst += IrisVertexFormats.ENTITY.getVertexSize();

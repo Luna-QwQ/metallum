@@ -451,7 +451,7 @@ public class AdvancedShadowCullingFrustum extends Frustum implements ViewportPro
 		return new Viewport(this, position.set(x, y, z));
 	}
 
-	private static final float SECTION_HALF_SIZE = OcclusionCuller.CHUNK_SECTION_SIZE;
+	private static final float SECTION_HALF_SIZE = 8;
 
 	@Override
 	public boolean testSection(float x, float y, float z) {

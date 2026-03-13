@@ -27,7 +27,7 @@ public class IrisPipelines {
 		assignToMain(RenderPipelines.SOLID_TERRAIN, p -> ShaderKey.TERRAIN_SOLID);
 		assignToMain(RenderPipelines.CUTOUT_TERRAIN, p -> ShaderKey.TERRAIN_CUTOUT);
 		assignToMain(RenderPipelines.TRANSLUCENT_TERRAIN, p -> ShaderKey.TERRAIN_TRANSLUCENT);
-		assignToMain(RenderPipelines.TRANSLUCENT_MOVING_BLOCK, p -> ShaderKey.MOVING_BLOCK);
+		assignToMain(RenderPipelines.TRANSLUCENT_BLOCK, p -> ShaderKey.MOVING_BLOCK);
 		assignToMain(RenderPipelines.WORLD_BORDER, p -> ShaderKey.TEXTURED);
 		assignToMain(RenderPipelines.ENTITY_CUTOUT, p -> getCutout(p));
 		assignToMain(RenderPipelines.ENTITY_CUTOUT_CULL, p -> getCutout(p));
@@ -84,7 +84,7 @@ public class IrisPipelines {
 		assignToShadow(RenderPipelines.CUTOUT_TERRAIN, p -> ShaderKey.SHADOW_TERRAIN_CUTOUT);
 		assignToShadow(RenderPipelines.TRANSLUCENT_TERRAIN, p -> ShaderKey.SHADOW_TRANSLUCENT);
 		assignToShadow(RenderPipelines.CUTOUT_BLOCK, p -> ShaderKey.SHADOW_TERRAIN_CUTOUT);
-		assignToShadow(RenderPipelines.TRANSLUCENT_MOVING_BLOCK, p -> ShaderKey.SHADOW_TRANSLUCENT);
+		assignToShadow(RenderPipelines.TRANSLUCENT_BLOCK, p -> ShaderKey.SHADOW_TRANSLUCENT);
 		assignToShadow(RenderPipelines.ENTITY_CUTOUT, p -> ShaderKey.SHADOW_ENTITIES_CUTOUT);
 		assignToShadow(RenderPipelines.ARMOR_CUTOUT_NO_CULL, p -> ShaderKey.SHADOW_ENTITIES_CUTOUT);
 		assignToShadow(RenderPipelines.ARMOR_DECAL_CUTOUT_NO_CULL, p -> ShaderKey.SHADOW_ENTITIES_CUTOUT);

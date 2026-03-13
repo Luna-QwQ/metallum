@@ -2,11 +2,8 @@ package net.irisshaders.iris.mixin.vertices.block_rendering;
 
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.QuadBrightness;
-import com.mojang.blaze3d.vertex.QuadLightmapCoords;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
-import net.minecraft.client.renderer.block.model.BakedQuad;
 import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.Arrays;

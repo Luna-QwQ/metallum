@@ -4,7 +4,7 @@ import net.irisshaders.iris.gui.GuiUtil;
 import net.irisshaders.iris.shaderpack.option.menu.OptionMenuStringOptionElement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.navigation.ScreenAxis;
 import net.minecraft.client.gui.navigation.ScreenDirection;
 import net.minecraft.client.gui.screens.Screen;
@@ -24,7 +24,7 @@ public class SliderElementWidget extends StringElementWidget {
 	}
 
 	@Override
-	public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float tickDelta, boolean hovered) {
+	public void render(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float tickDelta, boolean hovered) {
 		this.updateRenderParams(35);
 
 
@@ -69,7 +69,7 @@ public class SliderElementWidget extends StringElementWidget {
 		}
 	}
 
-	private void renderSlider(GuiGraphics guiGraphics) {
+	private void renderSlider(GuiGraphicsExtractor guiGraphics) {
 		GuiUtil.bindIrisWidgetsTexture();
 
 		// Draw background button
@@ -86,7 +86,7 @@ public class SliderElementWidget extends StringElementWidget {
 
 		// Draw value label
 		Font font = Minecraft.getInstance().font;
-		guiGraphics.drawString(font, this.valueLabel, bounds.getCenterInAxis(ScreenAxis.HORIZONTAL) - (int) (font.width(this.valueLabel) * 0.5), bounds.position().y() + 7, 0xFFFFFFFF);
+		guiGraphics.text(font, this.valueLabel, bounds.getCenterInAxis(ScreenAxis.HORIZONTAL) - (int) (font.width(this.valueLabel) * 0.5), bounds.position().y() + 7, 0xFFFFFFFF);
 	}
 
 	private void whileDragging(int mouseX) {

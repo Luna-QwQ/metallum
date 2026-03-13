@@ -5,7 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.irisshaders.iris.gl.uniform.FloatSupplier;
 import net.irisshaders.iris.gui.GuiUtil;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
@@ -30,7 +30,7 @@ public class IrisButton extends Button {
 	}
 
 	@Override
-	protected void renderContents(GuiGraphics guiGraphics, int pInt1, int pInt2, float pFloat3) {
+	protected void extractContents(GuiGraphicsExtractor guiGraphics, int pInt1, int pInt2, float pFloat3) {
 		Minecraft lvMinecraft5 = Minecraft.getInstance();
 		//guiGraphics.flush();
 		// TODO 1.21.6
@@ -42,7 +42,7 @@ public class IrisButton extends Button {
 		//guiGraphics.flush();
 		//RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, this.alphaSupplier.getAsFloat());
 		int lvInt6 = this.active ? 16777215 : 10526880;
-		this.renderDefaultLabel(guiGraphics.textRendererForWidget(this, GuiGraphics.HoveredTextEffects.NONE));
+		this.extractDefaultLabel(guiGraphics.textRendererForWidget(this, GuiGraphicsExtractor.HoveredTextEffects.NONE));
 		//guiGraphics.flush();
 		//RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 

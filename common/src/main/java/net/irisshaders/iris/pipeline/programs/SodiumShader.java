@@ -36,6 +36,7 @@ import net.irisshaders.iris.gl.state.FogMode;
 import net.irisshaders.iris.mixin.texture.TextureAtlasAccessor;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.samplers.IrisSamplers;
+import net.irisshaders.iris.shadows.ShadowRenderer;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.CommonUniforms;
 import net.irisshaders.iris.uniforms.builtin.BuiltinReplacementUniforms;
@@ -229,6 +230,10 @@ public class SodiumShader implements ChunkShaderInterface {
 
 		if (containsTessellation) {
 			ImmediateState.usingTessellation = true;
+		}
+
+		if (ShadowRenderer.ACTIVE) {
+			GlStateManager._viewport(0, 0, ShadowRenderer.RESOLUTION, ShadowRenderer.RESOLUTION);
 		}
 	}
 

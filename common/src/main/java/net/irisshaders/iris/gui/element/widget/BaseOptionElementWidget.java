@@ -8,7 +8,7 @@ import net.irisshaders.iris.shaderpack.option.menu.OptionMenuElement;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.navigation.ScreenDirection;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -79,7 +79,7 @@ public abstract class BaseOptionElementWidget<T extends OptionMenuElement> exten
 		this.isLabelTrimmed = font.width(this.label) > this.maxLabelWidth;
 	}
 
-	protected final void renderOptionWithValue(GuiGraphics guiGraphics, boolean hovered, float sliderPosition, int sliderWidth) {
+	protected final void renderOptionWithValue(GuiGraphicsExtractor guiGraphics, boolean hovered, float sliderPosition, int sliderWidth) {
 		GuiUtil.bindIrisWidgetsTexture();
 
 		// Draw button background
@@ -102,16 +102,16 @@ public abstract class BaseOptionElementWidget<T extends OptionMenuElement> exten
 		Font font = Minecraft.getInstance().font;
 
 		// Draw the label
-		guiGraphics.drawString(font, this.trimmedLabel, bounds.position().x() + 6, bounds.position().y() + 7, 0xFFFFFFFF);
+		guiGraphics.text(font, this.trimmedLabel, bounds.position().x() + 6, bounds.position().y() + 7, 0xFFFFFFFF);
 		// Draw the value label
-		guiGraphics.drawString(font, this.valueLabel, (bounds.getBoundInDirection(ScreenDirection.RIGHT) - 2) - (int) (this.valueSectionWidth * 0.5) - (int) (font.width(this.valueLabel) * 0.5), bounds.position().y() + 7, 0xFFFFFFFF);
+		guiGraphics.text(font, this.valueLabel, (bounds.getBoundInDirection(ScreenDirection.RIGHT) - 2) - (int) (this.valueSectionWidth * 0.5) - (int) (font.width(this.valueLabel) * 0.5), bounds.position().y() + 7, 0xFFFFFFFF);
 	}
 
-	protected final void renderOptionWithValue(GuiGraphics guiGraphics, boolean hovered) {
+	protected final void renderOptionWithValue(GuiGraphicsExtractor guiGraphics, boolean hovered) {
 		this.renderOptionWithValue(guiGraphics, hovered, -1, 0);
 	}
 
-	protected final void tryRenderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY, boolean hovered) {
+	protected final void tryRenderTooltip(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, boolean hovered) {
 		if (Minecraft.getInstance().hasShiftDown()) {
 			renderTooltip(guiGraphics, SET_TO_DEFAULT, mouseX, mouseY, hovered);
 		} else if (this.isLabelTrimmed && !this.screen.isDisplayingComment()) {
@@ -119,7 +119,7 @@ public abstract class BaseOptionElementWidget<T extends OptionMenuElement> exten
 		}
 	}
 
-	protected final void renderTooltip(GuiGraphics guiGraphics, Component text, int mouseX, int mouseY, boolean hovered) {
+	protected final void renderTooltip(GuiGraphicsExtractor guiGraphics, Component text, int mouseX, int mouseY, boolean hovered) {
 		if (hovered) {
 			ShaderPackScreen.TOP_LAYER_RENDER_QUEUE.add(() -> GuiUtil.drawTextPanel(Minecraft.getInstance().font, guiGraphics, text, mouseX + 2, mouseY - 16));
 		}

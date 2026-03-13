@@ -2,8 +2,7 @@ package net.irisshaders.iris.compat.general;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.irisshaders.iris.Iris;
-import net.minecraft.client.renderer.block.model.BlockModelPart;
-import net.minecraft.client.renderer.block.model.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.lang.invoke.MethodHandle;
@@ -17,7 +16,7 @@ import java.util.concurrent.locks.StampedLock;
 public class IrisModSupport {
 	public static final IrisModSupport INSTANCE = new IrisModSupport();
 
-	public BlockState getModelPartState(BlockModelPart model) {
+	public BlockState getModelPartState(BlockStateModelPart model) {
 		return ((IrisModelPart) model).getBlockAppearance();
 	}
 }

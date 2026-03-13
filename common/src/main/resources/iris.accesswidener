@@ -3,7 +3,6 @@ accessWidener	v1	official
 accessible  class   com/mojang/blaze3d/opengl/GlStateManager$BlendState
 accessible  class   com/mojang/blaze3d/opengl/GlStateManager$BooleanState
 accessible  class   com/mojang/blaze3d/opengl/GlStateManager$TextureState
-accessible  class   com/mojang/blaze3d/opengl/GlStateManager$ColorMask
 accessible  class   com/mojang/blaze3d/opengl/GlStateManager$DepthState
 accessible  class   net/minecraft/client/renderer/texture/Stitcher$Holder
 accessible  class   net/minecraft/world/level/biome/Biome$ClimateSettings
@@ -33,3 +32,5 @@ accessible method net/minecraft/client/renderer/texture/TextureAtlasSprite isAni
 accessible class com/mojang/blaze3d/opengl/GlDevice
 accessible class com/mojang/blaze3d/opengl/GlCommandEncoder
 accessible field com/mojang/blaze3d/opengl/GlBuffer handle I
+accessible field net/minecraft/client/renderer/blockentity/state/BlockEntityRenderState blockState Lnet/minecraft/world/level/block/state/BlockState;
+accessible field net/minecraft/client/renderer/blockentity/state/BlockEntityRenderState blockState Lnet/minecraft/world/level/block/state/BlockState;

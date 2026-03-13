@@ -8,7 +8,6 @@ import com.mojang.blaze3d.platform.WindowEventHandler;
 import com.mojang.blaze3d.shaders.GpuDebugOptions;
 import com.mojang.blaze3d.shaders.ShaderSource;
 import com.mojang.blaze3d.systems.GpuBackend;
-import com.mojang.blaze3d.systems.WindowAndDevice;
 import net.caffeinemc.mods.sodium.client.SodiumClientMod;
 import net.caffeinemc.mods.sodium.client.gui.SodiumOptions;
 import net.irisshaders.iris.Iris;
@@ -25,14 +24,14 @@ import java.io.IOException;
 
 @Mixin(value = GlBackend.class, priority = 1010)
 public class MixinWindow {
-	@Inject(method = "createDeviceWithWindow", at = @At(value = "INVOKE", target = "Lorg/lwjgl/glfw/GLFW;glfwCreateWindow(IILjava/lang/CharSequence;JJ)J"))
-	private void iris$enableDebugContext(int width, int height, String title, long monitor, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions, CallbackInfoReturnable<WindowAndDevice> cir) {
+	@Inject(method = "setWindowHints", at = @At(value = "RETURN"))
+	private void iris$enableDebugContext(CallbackInfo ci) {
 		if (Iris.getIrisConfig().areDebugOptionsEnabled()) {
 			GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_DEBUG_CONTEXT, GLFW.GLFW_TRUE);
 			GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_NO_ERROR, GLFW.GLFW_FALSE);
 			Iris.logger.info("OpenGL debug context activated.");
 			if (SodiumClientMod.options().performance.useNoErrorGLContext) {
-				TinyFileDialogs.tinyfd_messageBox("Iris", "Due to a configuration issue, Iris may crash on this launch. This has been fixed automatically for the next launch.", "ok", "warning", false);
+				TinyFileDialogs.tinyfd_messageBox("Iris", "Due to a configuration issue, Iris may crash on this launch. This has been fixed automatically for the next launch.", "ok", "warning", 0);
 				SodiumClientMod.options().performance.useNoErrorGLContext = false;
 				try {
 					SodiumOptions.writeToDisk(SodiumClientMod.options());

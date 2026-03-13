@@ -6,7 +6,7 @@ import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.resources.language.I18n;
@@ -55,7 +55,7 @@ public final class GuiUtil {
 	 * @param hovered  Whether the button is being hovered over with the mouse
 	 * @param disabled Whether the button should use the "disabled" texture
 	 */
-	public static void drawButton(GuiGraphics guiGraphics, int x, int y, int width, int height, boolean hovered, boolean disabled) {
+	public static void drawButton(GuiGraphicsExtractor guiGraphics, int x, int y, int width, int height, boolean hovered, boolean disabled) {
 		// Create variables for half of the width and height.
 		// Will not be exact when width and height are odd, but
 		// that case is handled within the draw calls.
@@ -87,7 +87,7 @@ public final class GuiUtil {
 	 * @param width  The width of the panel
 	 * @param height The height of the panel
 	 */
-	public static void drawPanel(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+	public static void drawPanel(GuiGraphicsExtractor guiGraphics, int x, int y, int width, int height) {
 		int borderColor = 0xDEDEDEDE;
 		int innerColor = 0xDE000000;
 
@@ -110,9 +110,9 @@ public final class GuiUtil {
 	 * @param x    The x position of the panel
 	 * @param y    The y position of the panel
 	 */
-	public static void drawTextPanel(Font font, GuiGraphics guiGraphics, Component text, int x, int y) {
+	public static void drawTextPanel(Font font, GuiGraphicsExtractor guiGraphics, Component text, int x, int y) {
 		drawPanel(guiGraphics, x, y, font.width(text) + 8, 16);
-		guiGraphics.drawString(font, text, x + 4, y + 4, 0xFFFFFFFF);
+		guiGraphics.text(font, text, x + 4, y + 4, 0xFFFFFFFF);
 	}
 
 	/**
@@ -192,7 +192,7 @@ public final class GuiUtil {
 		 * @param x The x position to draw the icon at (left)
 		 * @param y The y position to draw the icon at (top)
 		 */
-		public void draw(GuiGraphics guiGraphics, int x, int y) {
+		public void draw(GuiGraphicsExtractor guiGraphics, int x, int y) {
 			// Sets RenderSystem to use solid white as the tint color for blend mode (1.16), and enables blend mode
 			GlStateManager._enableBlend();
 

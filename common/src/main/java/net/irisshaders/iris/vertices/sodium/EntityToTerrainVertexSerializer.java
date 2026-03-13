@@ -10,6 +10,9 @@ import net.irisshaders.iris.vertices.NormalHelper;
 import org.lwjgl.system.MemoryUtil;
 
 public class EntityToTerrainVertexSerializer implements VertexSerializer {
+	private static final int MIDCOORD = IrisVertexFormats.TERRAIN.getOffset(IrisVertexFormats.MID_TEXTURE_ELEMENT);
+	private static final int TANGENT = IrisVertexFormats.TERRAIN.getOffset(IrisVertexFormats.TANGENT_ELEMENT);
+
 	@Override
 	public void serialize(long src, long dst, int vertexCount) {
 		// Only accept quads, to be safe
@@ -34,9 +37,9 @@ public class EntityToTerrainVertexSerializer implements VertexSerializer {
 				MemoryUtil.memPutInt(dst + 28, normal);
 				MemoryUtil.memPutShort(dst + 32, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedEntity());
 				MemoryUtil.memPutShort(dst + 34, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedBlockEntity());
-				MemoryUtil.memPutFloat(dst + 36, midU);
-				MemoryUtil.memPutFloat(dst + 40, midV);
-				MemoryUtil.memPutInt(dst + 44, tangent);
+				MemoryUtil.memPutFloat(dst + MIDCOORD, midU);
+				MemoryUtil.memPutFloat(dst + MIDCOORD + 4, midV);
+				MemoryUtil.memPutInt(dst + TANGENT, tangent);
 				MemoryUtil.memPutInt(dst + 48, 0);
 
 				src += EntityVertex.STRIDE;

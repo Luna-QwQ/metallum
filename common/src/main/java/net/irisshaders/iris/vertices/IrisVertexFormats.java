@@ -27,7 +27,7 @@ public class IrisVertexFormats {
 		}
 
 		ENTITY_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.SHORT, false, 2);
-		ENTITY_ID_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 3, VertexFormatElement.Type.USHORT, false, 3);
+		ENTITY_ID_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 3, VertexFormatElement.Type.USHORT, false, 4);
 		MID_TEXTURE_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.FLOAT, false, 2);
 		TANGENT_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.BYTE, true, 4);
 		MID_BLOCK_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.BYTE, false, 3);
@@ -69,7 +69,6 @@ public class IrisVertexFormats {
 			.add("iris_Entity", ENTITY_ID_ELEMENT)
 			.add("mc_midTexCoord", MID_TEXTURE_ELEMENT)
 			.add("at_tangent", TANGENT_ELEMENT)
-			.padding(1)
 			.build();
 
 		CLOUDS = VertexFormat.builder()

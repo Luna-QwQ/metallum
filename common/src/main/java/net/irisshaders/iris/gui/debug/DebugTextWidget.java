@@ -2,7 +2,7 @@ package net.irisshaders.iris.gui.debug;
 
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractTextAreaWidget;
 import net.minecraft.client.gui.components.MultiLineTextWidget;
 import net.minecraft.client.gui.layouts.GridLayout;
@@ -70,12 +70,12 @@ public class DebugTextWidget
 	}
 
 	@Override
-	protected void renderContents(GuiGraphics arg, int i, int j, float f) {
+	protected void extractContents(GuiGraphicsExtractor arg, int i, int j, float f) {
 		int k = this.getY() + this.innerPadding();
 		int l = this.getX() + this.innerPadding();
 		arg.pose().pushMatrix();
 		arg.pose().translate(l, k);
-		this.content.container().visitWidgets(element -> element.render(arg, i, j, f));
+		this.content.container().visitWidgets(element -> element.extractRenderState(arg, i, j, f));
 		arg.pose().popMatrix();
 	}
 
