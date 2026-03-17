@@ -133,7 +133,10 @@ public class IrisPipelines {
 	private static ShaderKey getText(Object p) {
 		IrisRenderingPipeline pipeline = (IrisRenderingPipeline) p;
 
-		if (isBlockEntities(pipeline)) {
+		if (HandRenderer.INSTANCE.isActive()) {
+			// In 1.21.11+, held map uses this.
+			return (HandRenderer.INSTANCE.isRenderingSolid() ? ShaderKey.HAND_TEXT : ShaderKey.HAND_TEXT_TRANSLUCENT);
+		} else if (isBlockEntities(pipeline)) {
 			return (ShaderKey.TEXT_BE);
 		} else {
 			return (ShaderKey.TEXT);
