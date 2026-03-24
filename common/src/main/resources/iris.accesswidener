@@ -33,4 +33,3 @@ accessible class com/mojang/blaze3d/opengl/GlDevice
 accessible class com/mojang/blaze3d/opengl/GlCommandEncoder
 accessible field com/mojang/blaze3d/opengl/GlBuffer handle I
 accessible field net/minecraft/client/renderer/blockentity/state/BlockEntityRenderState blockState Lnet/minecraft/world/level/block/state/BlockState;
-accessible field net/minecraft/client/renderer/blockentity/state/BlockEntityRenderState blockState Lnet/minecraft/world/level/block/state/BlockState;

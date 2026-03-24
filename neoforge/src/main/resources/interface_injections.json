@@ -5,6 +5,9 @@
   "com/mojang/blaze3d/textures/GpuTexture": [
     "net/irisshaders/iris/mixinterface/GpuTextureInterface"
   ],
+  "com/mojang/blaze3d/systems/RenderPassBackend": [
+    "net/irisshaders/iris/mixinterface/RenderPassInterface"
+  ],
   "com/mojang/blaze3d/systems/RenderPass": [
     "net/irisshaders/iris/mixinterface/RenderPassInterface"
   ],

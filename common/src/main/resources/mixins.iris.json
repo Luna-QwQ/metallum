@@ -64,7 +64,6 @@
     "MixinRenderSystem",
     "MixinRenderTarget",
     "MixinRenderType",
-    "MixinRenderTypes",
     "MixinScreenEffectRenderer",
     "MixinCompiledShaderProgram",
     "MixinSystemReport",
