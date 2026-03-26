@@ -6,6 +6,7 @@ import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexE
 import net.irisshaders.iris.pipeline.programs.GlUniformMatrix3f;
 import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
 import net.irisshaders.iris.vertices.ExtendedDataHelper;
+import net.irisshaders.iris.vertices.MemoryAccess;
 import net.irisshaders.iris.vertices.NormI8;
 import net.irisshaders.iris.vertices.NormalHelper;
 import net.minecraft.util.Mth;
@@ -146,27 +147,27 @@ public class XHFPTerrainVertex implements ChunkVertexEncoder {
 
 			int light = encodeLight(vertex.light);
 
-			MemoryUtil.memPutInt(ptr, packPositionHi(x, y, z));
-			MemoryUtil.memPutInt(ptr + 4L, packPositionLo(x, y, z));
-			MemoryUtil.memPutInt(ptr + 8L, WorldRenderingSettings.INSTANCE.shouldUseSeparateAo() ? ColorABGR.withAlpha(vertex.color, vertex.ao) : ColorARGB.mulRGB(vertex.color, vertex.ao));
-			MemoryUtil.memPutInt(ptr + 12L, packTexture(u, v));
-			MemoryUtil.memPutInt(ptr + 16L, packLightAndData(light, this.tangent.w >= 0.0, section));
+			MemoryAccess.setInt(ptr, packPositionHi(x, y, z));
+			MemoryAccess.setInt(ptr + 4L, packPositionLo(x, y, z));
+			MemoryAccess.setInt(ptr + 8L, WorldRenderingSettings.INSTANCE.shouldUseSeparateAo() ? ColorABGR.withAlpha(vertex.color, vertex.ao) : ColorARGB.mulRGB(vertex.color, vertex.ao));
+			MemoryAccess.setInt(ptr + 12L, packTexture(u, v));
+			MemoryAccess.setInt(ptr + 16L, packLightAndData(light, this.tangent.w >= 0.0, section));
 
 			if (blockIdOffset != 0) {
-				MemoryUtil.memPutInt(ptr + blockIdOffset, packBlockId(extension));
+				MemoryAccess.setInt(ptr + blockIdOffset, packBlockId(extension));
 			}
 
 			if (midBlockOffset != 0) {
-				MemoryUtil.memPutInt(ptr + midBlockOffset, extension.ignoreMidBlock() ? 0 : ExtendedDataHelper.computeMidBlock(vertex.x, vertex.y, vertex.z, extension.getLocalPosX(), extension.getLocalPosY(), extension.getLocalPosZ()));
-				MemoryUtil.memPutByte(ptr + midBlockOffset + 3, extension.getBlockEmission());
+				MemoryAccess.setInt(ptr + midBlockOffset, extension.ignoreMidBlock() ? 0 : ExtendedDataHelper.computeMidBlock(vertex.x, vertex.y, vertex.z, extension.getLocalPosX(), extension.getLocalPosY(), extension.getLocalPosZ()));
+				MemoryAccess.setByte(ptr + midBlockOffset + 3, extension.getBlockEmission());
 			}
 
 			if (midUvOffset != 0) {
-				MemoryUtil.memPutInt(ptr + midUvOffset, midUV);
+				MemoryAccess.setInt(ptr + midUvOffset, midUV);
 			}
 
 			if (normalOffset != 0) {
-				MemoryUtil.memPutInt(ptr + normalOffset, finalNorm);
+				MemoryAccess.setInt(ptr + normalOffset, finalNorm);
 			}
 
 			ptr += stride;
