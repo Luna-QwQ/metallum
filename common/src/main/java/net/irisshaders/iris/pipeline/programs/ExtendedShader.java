@@ -1,6 +1,7 @@
 package net.irisshaders.iris.pipeline.programs;
 
 import com.mojang.blaze3d.opengl.GlProgram;
+import com.mojang.blaze3d.opengl.GlRenderPass;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.Uniform;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -34,7 +35,7 @@ import net.irisshaders.iris.shadows.ShadowRenderingState;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vertices.ImmediateState;
-import org.jetbrains.annotations.NotNull;
+import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -46,6 +47,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -170,13 +172,9 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 	private float[] tempF = new float[9];
 
 	@Override
-	public void iris$setupState(GpuTextureView albedoTex) {
+	public void iris$setupState(HashMap<String, GlRenderPass.TextureViewAndSampler> samplers, GpuTextureView albedoTex) {
 		isSetup = true;
 		DepthColorStorage.unlockDepthColor();
-
-		if (!hasUV) {
-			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 0, pipeline.getWhitePixel().getTexture().iris$getGlId());
-		}
 
 		CapturedRenderingState.INSTANCE.setCurrentAlphaTest(alphaTest);
 		GlStateManager._glUseProgram(getProgramId());
@@ -205,8 +203,20 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 
 		ImmediateState.usingTessellation = usesTessellation;
 
-		samplers.update();
+		this.samplers.update();
 		uniforms.update();
+
+		if (!hasUV) {
+			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 0, pipeline.getWhitePixel().getTexture().iris$getGlId());
+		}
+
+		if (!samplers.containsKey("Sampler1")) {
+			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 1, pipeline.getBiggerWhitePixel().getTexture().iris$getGlId());
+		}
+
+		if (!samplers.containsKey("Sampler2")) {
+			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 2, pipeline.getWhitePixel().getTexture().iris$getGlId());
+		}
 
 		customUniforms.push(this);
 

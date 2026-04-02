@@ -1,33 +1,25 @@
 package net.irisshaders.iris.pipeline.programs;
 
 import com.mojang.blaze3d.opengl.GlProgram;
+import com.mojang.blaze3d.opengl.GlRenderPass;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.Window;
-import com.mojang.blaze3d.opengl.Uniform;
 import com.mojang.blaze3d.shaders.UniformType;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.irisshaders.iris.compat.SkipList;
-import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
 import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
-import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.mixinterface.ShaderInstanceInterface;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
-import net.irisshaders.iris.samplers.IrisSamplers;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
-import net.minecraft.client.Minecraft;
-import net.minecraft.server.packs.resources.ResourceProvider;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL31C;
 import org.lwjgl.opengl.GL46C;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public class FallbackShader extends GlProgram implements IrisProgram {
@@ -102,7 +94,7 @@ public class FallbackShader extends GlProgram implements IrisProgram {
 	}
 
 	@Override
-	public void iris$setupState(GpuTextureView albedoTex) {
+	public void iris$setupState(HashMap<String, GlRenderPass.TextureViewAndSampler> samplers, GpuTextureView albedoTex) {
 		isSetUp = true;
 		DepthColorStorage.unlockDepthColor();
 

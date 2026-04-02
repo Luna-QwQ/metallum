@@ -166,7 +166,7 @@ public class MixinGlCommandEncoder {
 			if (sam != null && Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline irp) {
 				irp.onSetAlbedoTex(sam.view());
 			}
-			is.iris$setupState(sam == null ? null : sam.view());
+			is.iris$setupState(glRenderPass.samplers, sam == null ? null : sam.view());
 			programsToClear.add(is);
 		}
 	}

@@ -143,6 +143,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 	private final FinalPassRenderer finalPassRenderer;
 	private final CustomTextureManager customTextureManager;
 	private final DynamicTexture whitePixel;
+	private final DynamicTexture biggerWhitePixel;
 	private final FrameUpdateNotifier updateNotifier;
 	private final CenterDepthSampler centerDepthSampler;
 	private final ColorSpaceConverter colorSpaceConverter;
@@ -303,6 +304,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 		customTextureManager = new CustomTextureManager(programSet.getPackDirectives(), programSet.getPack().getCustomTextureDataMap(), programSet.getPack().getIrisCustomTextureDataMap(), programSet.getPack().getCustomNoiseTexture());
 		whitePixel = new NativeImageBackedSingleColorTexture(255, 255, 255, 255);
+		biggerWhitePixel = new NativeImageBackedSingleColorTexture(32, 32, 255, 255, 255, 255);
 
 		GlStateManager._activeTexture(GL20C.GL_TEXTURE0);
 
@@ -1228,6 +1230,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		centerDepthSampler.destroy();
 		customTextureManager.destroy();
 		whitePixel.close();
+		biggerWhitePixel.close();
 
 		horizonRenderer.destroy();
 
@@ -1281,6 +1284,10 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 	public AbstractTexture getWhitePixel() {
 		return whitePixel;
+	}
+
+	public AbstractTexture getBiggerWhitePixel() {
+		return biggerWhitePixel;
 	}
 
 	@Override
