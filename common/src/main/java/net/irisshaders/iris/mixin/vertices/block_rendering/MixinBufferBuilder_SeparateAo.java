@@ -19,7 +19,7 @@ import java.util.Arrays;
  * field to store the directional shading / ambient occlusion coefficient for each vertex. This mixin implements that
  * behavior, though conditionally controlled by the current shader pack of course.
  */
-@Mixin(value = BufferBuilder.class, priority = 999)
+@Mixin(value = BufferBuilder.class, priority = 1001)
 public abstract class MixinBufferBuilder_SeparateAo implements VertexConsumer {
 
 }

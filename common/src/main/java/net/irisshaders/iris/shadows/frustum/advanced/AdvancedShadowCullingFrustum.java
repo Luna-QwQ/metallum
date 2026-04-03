@@ -451,7 +451,10 @@ public class AdvancedShadowCullingFrustum extends Frustum implements ViewportPro
 		return new Viewport(this, position.set(x, y, z));
 	}
 
-	private static final float SECTION_HALF_SIZE = 8;
+	public static final float CHUNK_SECTION_RADIUS = 8.0f /* chunk bounds */;
+	public static final float CHUNK_SECTION_MARGIN = 1.0f /* maximum model extent */ + 0.125f /* epsilon */;
+	public static final float SECTION_HALF_SIZE = CHUNK_SECTION_RADIUS + CHUNK_SECTION_MARGIN;
+
 
 	@Override
 	public boolean testSection(float x, float y, float z) {

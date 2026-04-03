@@ -51,7 +51,10 @@ public class BoxCullingFrustum extends Frustum implements net.caffeinemc.mods.so
 		return this.boxCuller.intersectAab(v, v1, v2, v3, v4, v5);
 	}
 
-	private static final float SECTION_HALF_SIZE = 8;
+	public static final float CHUNK_SECTION_RADIUS = 8.0f /* chunk bounds */;
+	public static final float CHUNK_SECTION_MARGIN = 1.0f /* maximum model extent */ + 0.125f /* epsilon */;
+	public static final float SECTION_HALF_SIZE = CHUNK_SECTION_RADIUS + CHUNK_SECTION_MARGIN;
+
 
 	@Override
 	public boolean testSection(float x, float y, float z) {
