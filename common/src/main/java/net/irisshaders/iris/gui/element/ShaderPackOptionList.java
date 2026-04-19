@@ -396,7 +396,7 @@ public class ShaderPackOptionList extends IrisContainerObjectSelectionList<Shade
 						return;
 					}
 
-					if (Minecraft.getInstance().screen == originalScreen) {
+					if (Minecraft.getInstance().gui.screen() == originalScreen) {
 						path.ifPresent(originalScreen::importPackOptions);
 					}
 				});

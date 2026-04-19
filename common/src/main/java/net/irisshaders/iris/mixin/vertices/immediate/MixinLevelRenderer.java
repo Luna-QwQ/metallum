@@ -21,13 +21,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Uses a priority of 999 to apply before the main Iris mixins to draw entities before deferred runs.
 @Mixin(value = LevelRenderer.class, priority = 999)
 public class MixinLevelRenderer {
-	@Inject(method = "renderLevel", at = @At("HEAD"))
-	private void iris$immediateStateBeginLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
+	@Inject(method = "render", at = @At("HEAD"))
+	private void iris$immediateStateBeginLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
 		ImmediateState.isRenderingLevel = true;
 	}
 
-	@Inject(method = "renderLevel", at = @At("RETURN"))
-	private void iris$immediateStateEndLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
+	@Inject(method = "render", at = @At("RETURN"))
+	private void iris$immediateStateEndLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
 		ImmediateState.isRenderingLevel = false;
 	}
 }

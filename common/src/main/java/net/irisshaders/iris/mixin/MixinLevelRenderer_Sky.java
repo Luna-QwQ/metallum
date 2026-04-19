@@ -22,9 +22,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // This is a modified version of a mixin in Sodium, with a check for if a shader pack is active.
 @Mixin(LevelRenderer.class)
 public class MixinLevelRenderer_Sky {
-	@Shadow
-	@Final
-	private Minecraft minecraft;
 
 	/**
 	 * <p>Prevents the sky layer from rendering when the fog distance is reduced
@@ -46,13 +43,13 @@ public class MixinLevelRenderer_Sky {
 	@Inject(method = {MojLambdas.RENDER_SKY, NeoLambdas.NEO_RENDER_SKY }, require = 1, at = @At("HEAD"), cancellable = true)
 	private static void preRenderSky(CallbackInfo ci) {
 		if (Iris.getCurrentPack().isEmpty()) {
-			Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+			Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
 			Vec3 cameraPosition = camera.position();
 			Entity cameraEntity = camera.entity();
 
 			boolean isSubmersed = camera.getFluidInCamera() != FogType.NONE;
 			boolean blockSky = ((LevelRendererAccessor) Minecraft.getInstance().levelRenderer).getLevelRenderState().cameraRenderState.entityRenderState.doesMobEffectBlockSky;
-			boolean useThickFog = Minecraft.getInstance().gui.getBossOverlay().shouldCreateWorldFog();
+			boolean useThickFog = Minecraft.getInstance().gui.hud.getBossOverlay().shouldCreateWorldFog();
 
 			if (isSubmersed || blockSky || useThickFog) {
 				ci.cancel();

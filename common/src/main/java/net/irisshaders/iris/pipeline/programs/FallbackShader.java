@@ -3,10 +3,12 @@ package net.irisshaders.iris.pipeline.programs;
 import com.mojang.blaze3d.opengl.GlProgram;
 import com.mojang.blaze3d.opengl.GlRenderPass;
 import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormatElement;
 import net.irisshaders.iris.compat.SkipList;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
 import net.irisshaders.iris.gl.blending.DepthColorStorage;
@@ -14,6 +16,7 @@ import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
 import net.irisshaders.iris.mixinterface.ShaderInstanceInterface;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
+import net.minecraft.client.renderer.BindGroupLayouts;
 import org.lwjgl.opengl.GL31C;
 import org.lwjgl.opengl.GL46C;
 
@@ -41,16 +44,45 @@ public class FallbackShader extends GlProgram implements IrisProgram {
 		super(programId, string);
 		((ShaderInstanceInterface) this).setShouldSkip(SkipList.NONE);
 
-		List<RenderPipeline.UniformDescription> uniforms = new ArrayList<>(pipeline.getUniforms());
 
-		uniforms.add(new RenderPipeline.UniformDescription("DynamicTransforms", UniformType.UNIFORM_BUFFER));
-		uniforms.add(new RenderPipeline.UniformDescription("CloudInfo", UniformType.UNIFORM_BUFFER));
-		uniforms.add(new RenderPipeline.UniformDescription("Projection", UniformType.UNIFORM_BUFFER));
-		uniforms.add(new RenderPipeline.UniformDescription("Fog", UniformType.UNIFORM_BUFFER));
-		uniforms.add(new RenderPipeline.UniformDescription("Globals", UniformType.UNIFORM_BUFFER));
-		uniforms.add(new RenderPipeline.UniformDescription("Lighting", UniformType.UNIFORM_BUFFER));
+		boolean has1 = false, has2 = false, has0 = false;
+		if (vertexFormat.contains(VertexFormatElement.UV)) {
+			has0 = true;
+		}
 
-		setupUniforms(uniforms, pipeline.getSamplers());
+		if (vertexFormat.contains(VertexFormatElement.UV1)) {
+			has1 = true;
+		}
+
+		if (vertexFormat.contains(VertexFormatElement.UV2)) {
+			has2 = true;
+		}
+
+		BindGroupLayout samplr = null;
+
+		if (has0) {
+			if (has1) {
+				if (has2) {
+					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2;
+				} else {
+					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1;
+				}
+			} else if (has2) {
+				samplr = BindGroupLayouts.SAMPLER0_SAMPLER2;
+			} else {
+				samplr = BindGroupLayouts.SAMPLER0;
+			}
+		}
+
+		List<BindGroupLayout> layouts = new ArrayList<>();
+		if (samplr != null) layouts.add(samplr);
+		layouts.add(BindGroupLayouts.DYNAMIC_TRANSFORMS);
+		layouts.add(BindGroupLayouts.CLOUD_INFO);
+		layouts.add(BindGroupLayouts.PROJECTION);
+		layouts.add(BindGroupLayouts.GLOBALS);
+		layouts.add(BindGroupLayouts.FOG);
+
+		super.setupBindGroupLayouts(layouts);
 
 		this.parent = parent;
 		this.blendModeOverride = blendModeOverride;

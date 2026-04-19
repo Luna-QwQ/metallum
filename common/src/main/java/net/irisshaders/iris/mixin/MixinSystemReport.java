@@ -1,6 +1,7 @@
 package net.irisshaders.iris.mixin;
 
 import net.irisshaders.iris.Iris;
+import net.minecraft.CrashReportDetail;
 import net.minecraft.SystemReport;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -15,8 +16,9 @@ import java.util.function.Supplier;
  */
 @Mixin(SystemReport.class)
 public abstract class MixinSystemReport {
+
 	@Shadow
-	public abstract void setDetail(String string, Supplier<String> supplier);
+	public abstract void setDetail(String key, CrashReportDetail<Object> valueSupplier);
 
 	@Inject(at = @At("RETURN"), method = "<init>")
 	private void fillSystemDetails(CallbackInfo ci) {

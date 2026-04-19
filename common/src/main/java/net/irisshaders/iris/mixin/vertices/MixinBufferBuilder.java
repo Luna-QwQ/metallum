@@ -18,7 +18,6 @@ import net.irisshaders.iris.vertices.MojangBufferAccessor;
 import net.irisshaders.iris.vertices.NormI8;
 import net.irisshaders.iris.vertices.NormalHelper;
 import org.joml.Vector3f;
-import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Dynamic;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -59,7 +58,7 @@ public abstract class MixinBufferBuilder implements VertexConsumer, BlockSensiti
 	private int[] offsetsByElement;
 	@Shadow
 	@Final
-	private boolean fastFormat;
+	private boolean blockFormat;
 	@Shadow
 	private long vertexPointer;
 	@Shadow
@@ -90,7 +89,7 @@ public abstract class MixinBufferBuilder implements VertexConsumer, BlockSensiti
 	@Shadow
 	protected abstract long beginElement(VertexFormatElement vertexFormatElement);
 
-	@ModifyVariable(method = "<init>", at = @At(value = "FIELD", target = "Lcom/mojang/blaze3d/vertex/VertexFormatElement;POSITION:Lcom/mojang/blaze3d/vertex/VertexFormatElement;", ordinal = 0), argsOnly = true)
+	@ModifyVariable(method = "<init>", at = @At(value = "FIELD", target = "Lcom/mojang/blaze3d/vertex/VertexFormatElement;POSITION:Lcom/mojang/blaze3d/vertex/VertexFormatElement;"), argsOnly = true)
 	private VertexFormat iris$extendFormat(VertexFormat format) {
 		boolean iris$isTerrain = false;
 		injectNormalAndUV1 = false;
@@ -99,17 +98,17 @@ public abstract class MixinBufferBuilder implements VertexConsumer, BlockSensiti
 			return format;
 		}
 
-		if (format == DefaultVertexFormat.BLOCK || format == IrisVertexFormats.TERRAIN) {
+		if (format.equals(DefaultVertexFormat.BLOCK) || format.equals(IrisVertexFormats.TERRAIN)) {
 			extending = true;
 			iris$isTerrain = true;
 			injectNormalAndUV1 = false;
 			return IrisVertexFormats.TERRAIN;
-		} else if (format == DefaultVertexFormat.ENTITY || format == IrisVertexFormats.ENTITY) {
+		} else if (format.equals(DefaultVertexFormat.ENTITY) || format.equals(IrisVertexFormats.ENTITY)) {
 			extending = true;
 			iris$isTerrain = false;
 			injectNormalAndUV1 = false;
 			return IrisVertexFormats.ENTITY;
-		} else if (format == DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP || format == IrisVertexFormats.GLYPH) {
+		} else if (format.equals(DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR) || format.equals(IrisVertexFormats.GLYPH)) {
 			extending = true;
 			iris$isTerrain = false;
 			injectNormalAndUV1 = true;
@@ -119,9 +118,9 @@ public abstract class MixinBufferBuilder implements VertexConsumer, BlockSensiti
 		return format;
 	}
 
-	@Redirect(method = "addVertex(FFFIFFIIFFF)V", at = @At(value = "FIELD", target = "Lcom/mojang/blaze3d/vertex/BufferBuilder;fastFormat:Z"))
+	@Redirect(method = "addVertex(FFFIFFIIFFF)V", at = @At(value = "FIELD", target = "Lcom/mojang/blaze3d/vertex/BufferBuilder;blockFormat:Z"))
 	private boolean fastFormat(BufferBuilder instance) {
-		return this.fastFormat && !extending;
+		return this.blockFormat && !extending;
 	}
 
 	@Inject(method = "addVertex(FFF)Lcom/mojang/blaze3d/vertex/VertexConsumer;", at = @At("RETURN"))

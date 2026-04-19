@@ -21,12 +21,6 @@ public class MixinLevelRenderer implements CullingDataCache {
 	private ObjectArrayList<SectionRenderDispatcher.RenderSection> savedRenderChunks = new ObjectArrayList<>(69696);
 
 
-	@Shadow
-	private double prevCamRotX;
-
-	@Shadow
-	private double prevCamRotY;
-
 	@Unique
 	private double savedLastCameraX;
 
@@ -58,13 +52,5 @@ public class MixinLevelRenderer implements CullingDataCache {
 		visibleSections = savedRenderChunks;
 		savedRenderChunks = tmpList;
 		double tmp;
-
-		tmp = prevCamRotX;
-		prevCamRotX = savedLastCameraPitch;
-		savedLastCameraPitch = tmp;
-
-		tmp = prevCamRotY;
-		prevCamRotY = savedLastCameraYaw;
-		savedLastCameraYaw = tmp;
 	}
 }

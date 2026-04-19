@@ -14,6 +14,7 @@ import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
 import net.caffeinemc.mods.sodium.client.util.FogParameters;
+import net.irisshaders.iris.mixinterface.ShadowRenderListAccess;
 import net.irisshaders.iris.mixinterface.ShadowRenderRegion;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
 import net.minecraft.client.Camera;
@@ -35,7 +36,7 @@ import java.util.EnumMap;
 import java.util.Map;
 
 @Mixin(RenderSectionManager.class)
-public abstract class MixinRenderSectionManagerShadow {
+public abstract class MixinRenderSectionManagerShadow implements ShadowRenderListAccess {
 	@Shadow(remap = false)
 	private @NotNull SortedRenderLists renderLists;
 	@Shadow(remap = false)
@@ -60,6 +61,42 @@ public abstract class MixinRenderSectionManagerShadow {
 
 	@Unique
 	private boolean renderListStateIsShadow = false;
+
+	@Unique
+	private void iris$swapToShadowRenderLists() {
+		if (this.renderListStateIsShadow) {
+			return;
+		}
+
+		for (var region : this.regions.getLoadedRegions()) {
+			((ShadowRenderRegion) region).swapToShadowRenderList();
+		}
+
+		this.renderListStateIsShadow = true;
+	}
+
+	@Unique
+	private void iris$swapToRegularRenderLists() {
+		if (!this.renderListStateIsShadow) {
+			return;
+		}
+
+		for (var region : this.regions.getLoadedRegions()) {
+			((ShadowRenderRegion) region).swapToRegularRenderList();
+		}
+
+		this.renderListStateIsShadow = false;
+	}
+
+	@Override
+	public void iris$beginShadowRenderListScope() {
+		this.iris$swapToShadowRenderLists();
+	}
+
+	@Override
+	public void iris$endShadowRenderListScope() {
+		this.iris$swapToRegularRenderLists();
+	}
 
 	@Inject(method = "needsUpdate", at = @At(value = "HEAD"))
 	private void notifyChangedCamera(CallbackInfoReturnable<Boolean> cir) {
@@ -86,20 +123,10 @@ public abstract class MixinRenderSectionManagerShadow {
 	@WrapMethod(method = "createTerrainRenderList")
 	private boolean updateShadowRenderLists(Camera camera, Viewport viewport, FogParameters fogParameters, int frame, boolean spectator, Operation<Boolean> original) {
 		if (!ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
-			if (this.renderListStateIsShadow) {
-				for (var region : this.regions.getLoadedRegions()) {
-					((net.irisshaders.iris.mixinterface.ShadowRenderRegion) region).swapToRegularRenderList();
-				}
-				this.renderListStateIsShadow = false;
-			}
+			this.iris$swapToRegularRenderLists();
 		} else {
 			if (this.shadowNeedsRenderListUpdate) {
-				if (!this.renderListStateIsShadow) {
-					for (var region : this.regions.getLoadedRegions()) {
-						((ShadowRenderRegion) region).swapToShadowRenderList();
-					}
-					this.renderListStateIsShadow = true;
-				}
+				this.iris$swapToShadowRenderLists();
 			}
 		}
 

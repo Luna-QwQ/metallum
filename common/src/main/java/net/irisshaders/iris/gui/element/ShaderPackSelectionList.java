@@ -53,11 +53,11 @@ public class ShaderPackSelectionList extends IrisObjectSelectionList<ShaderPackS
 
 		this.screen = screen;
 		this.topButtonRow = new TopButtonRowEntry(this, Iris.getIrisConfig().areShadersEnabled());
-		this.downloadButton = new PinnedEntry(Component.literal("Download Shaders"), () -> this.minecraft.setScreen(new ConfirmLinkScreen(bl -> {
+		this.downloadButton = new PinnedEntry(Component.literal("Download Shaders"), () -> this.minecraft.gui.setScreen(new ConfirmLinkScreen(bl -> {
 			if (bl) {
 				Util.getPlatform().openUri("https://modrinth.com/shaders");
 			}
-			this.minecraft.setScreen(this.screen);
+			this.minecraft.gui.setScreen(this.screen);
 		}, "https://modrinth.com/shaders", true)), this);
 		try {
 			watcher1 = FileSystems.getDefault().newWatchService();

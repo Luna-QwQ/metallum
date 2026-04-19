@@ -48,17 +48,13 @@ public abstract class MixinItemInHandRenderer implements ItemInHandInterface {
 		customRenderer = null;
 	}
 
-	@WrapWithCondition(method = "renderHandsWithItems", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures()V"))
-	private boolean iris$wrapHand(FeatureRenderDispatcher instance) {
-		return customRenderer == null;
-	}
 
-	@WrapOperation(method = "renderHandsWithItems", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;endBatch()V"))
-	private void iris$wrapHand2(MultiBufferSource.BufferSource instance, Operation<Void> original) {
-		if (customRenderer == null) {
-			original.call(instance);
-		} else {
+	@WrapOperation(method = "renderHandsWithItems", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderAllFeatures()V"))
+	private void iris$wrapHand2(FeatureRenderDispatcher instance, Operation<Void> original) {
+		if (customRenderer != null) {
 			customRenderer.endRender();
+		} else {
+			original.call(instance);
 		}
 	}
 

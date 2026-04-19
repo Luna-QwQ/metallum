@@ -51,7 +51,7 @@ public class HandRenderer {
 
 	public HandRenderer() {
 		submitNodeCollector = new SubmitNodeStorage();
-		featureRenderDispatcher = new FeatureRenderDispatcher(submitNodeCollector, Minecraft.getInstance().getModelManager(), bufferSource.bufferSource(), Minecraft.getInstance().getAtlasManager(), bufferSource.outlineBufferSource(), bufferSource.crumblingBufferSource(), Minecraft.getInstance().font, Minecraft.getInstance().gameRenderer.getGameRenderState());
+		featureRenderDispatcher = new FeatureRenderDispatcher(submitNodeCollector, Minecraft.getInstance().getModelManager(), bufferSource.bufferSource(), Minecraft.getInstance().getAtlasManager(), bufferSource.outlineBufferSource(), bufferSource.crumblingBufferSource(), Minecraft.getInstance().font, Minecraft.getInstance().gameRenderer.gameRenderState());
 	}
 
 	private PoseStack setupGlState(GameRenderer gameRenderer, CameraRenderState camera, Matrix4fc modelMatrix, float tickDelta) {
@@ -77,7 +77,7 @@ public class HandRenderer {
 		return !(camera.isDetached()
 			|| !(camera.entity() instanceof Player)
 			|| (camera).isPanoramicMode()
-			|| Minecraft.getInstance().options.hideGui
+			|| Minecraft.getInstance().gui.hud.isHidden()
 			|| (camera.entity() instanceof LivingEntity && ((LivingEntity) camera.entity()).isSleeping())
 			|| Minecraft.getInstance().gameMode.getPlayerMode() == GameType.SPECTATOR);
 	}
@@ -133,6 +133,8 @@ public class HandRenderer {
 	public void renderTranslucent(Matrix4fc modelMatrix, float tickDelta, Camera camera, CameraRenderState cameraState, GameRenderer gameRenderer, WorldRenderingPipeline pipeline) {
 		if (!canRender(camera, gameRenderer) || !gameRenderer.itemInHandRenderer.iris$isAnyHandTranslucent() || !Iris.isPackInUseQuick()) {
 			submitNodeCollector.endFrame();
+			bufferSource.bufferSource().endFrame();
+
 			return;
 		}
 
@@ -157,6 +159,7 @@ public class HandRenderer {
 
 		Profiler.get().pop();
 		submitNodeCollector.endFrame();
+		bufferSource.bufferSource().endFrame();
 
 		RenderSystem.restoreProjectionMatrix();
 
@@ -181,6 +184,5 @@ public class HandRenderer {
 
 	public void endRender() {
 		featureRenderDispatcher.renderAllFeatures();
-		bufferSource.bufferSource().endBatch();
 	}
 }

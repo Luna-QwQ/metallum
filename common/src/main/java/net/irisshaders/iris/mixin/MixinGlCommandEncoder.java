@@ -43,9 +43,6 @@ public class MixinGlCommandEncoder {
 	private RenderPipeline lastPipeline;
 
 	@Shadow
-	private boolean inRenderPass;
-
-	@Shadow
 	@Nullable
 	private GlProgram lastProgram;
 
@@ -75,15 +72,6 @@ public class MixinGlCommandEncoder {
 			GlStateManager._glBindFramebuffer(i, j);
 		}
 	}
-
-	@Redirect(method = "finishRenderPass", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_glBindFramebuffer(II)V"))
-	private void finishFramebuffer(int i, int j) {
-		if (!ImmediateState.safeToMultiply) {
-			GlStateManager._glBindFramebuffer(i, j);
-		}
-	}
-
-
 
 	@Unique
 	private static GlRenderPass lastPass;
@@ -144,10 +132,10 @@ public class MixinGlCommandEncoder {
 					GlStateManager._enableBlend();
 					BlendFunction blendFunction = (BlendFunction)pipeline.getColorTargetState().blendFunction().get();
 					GlStateManager._blendFuncSeparate(
-						GlConst.toGl(blendFunction.sourceColor()),
-						GlConst.toGl(blendFunction.destColor()),
-						GlConst.toGl(blendFunction.sourceAlpha()),
-						GlConst.toGl(blendFunction.destAlpha())
+						GlConst.toGl(blendFunction.color().sourceFactor()),
+						GlConst.toGl(blendFunction.color().destFactor()),
+						GlConst.toGl(blendFunction.alpha().sourceFactor()),
+						GlConst.toGl(blendFunction.alpha().destFactor())
 					);
 				} else {
 					GlStateManager._disableBlend();
@@ -171,7 +159,7 @@ public class MixinGlCommandEncoder {
 		}
 	}
 
-	@Inject(method = "finishRenderPass", at = @At("HEAD"))
+	@Inject(method = "submitRenderPass", at = @At("HEAD"))
 	private void iris$clearState(CallbackInfo ci) {
 		programsToClear.forEach(IrisProgram::iris$clearState);
 		programsToClear.clear();

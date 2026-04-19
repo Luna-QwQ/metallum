@@ -24,7 +24,7 @@ public final class WorldTimeUniforms {
 		uniforms
 			.uniform1i(PER_TICK, "worldTime", WorldTimeUniforms::getWorldDayTime)
 			.uniform1i(PER_TICK, "worldDay", WorldTimeUniforms::getWorldDay)
-			.uniform1i(PER_TICK, "moonPhase", () -> Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(EnvironmentAttributes.MOON_PHASE, CapturedRenderingState.INSTANCE.getTickDelta()).index());
+			.uniform1i(PER_TICK, "moonPhase", () -> Minecraft.getInstance().gameRenderer.mainCamera().attributeProbe().getValue(EnvironmentAttributes.MOON_PHASE, CapturedRenderingState.INSTANCE.getTickDelta()).index());
 	}
 
 	static int getWorldDayTime() {

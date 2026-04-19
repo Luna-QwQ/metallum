@@ -28,7 +28,7 @@ public final class CelestialUniforms {
 	}
 
 	public static float getSunAngle(boolean sun) {
-		float currentAngle = Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
+		float currentAngle = Minecraft.getInstance().gameRenderer.mainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
 
 		float c = currentAngle + 90.0f;
 
@@ -153,7 +153,7 @@ public final class CelestialUniforms {
 		// This is because we need the result of it before it's actually performed in vanilla.
 		celestial.rotate(Axis.YP.rotationDegrees(-90.0F));
 		celestial.rotate(Axis.ZP.rotationDegrees(sunPathRotation));
-		float currentAngle = Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
+		float currentAngle = Minecraft.getInstance().gameRenderer.mainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
 
 		celestial.rotate(Axis.XP.rotationDegrees(currentAngle));
 		celestial.transform(position);
@@ -170,7 +170,7 @@ public final class CelestialUniforms {
 		// This is because we need the result of it before it's actually performed in vanilla.
 		celestial.rotate(Axis.YP.rotationDegrees(-90.0F));
 		celestial.rotate(Axis.ZP.rotationDegrees(sunPathRotation));
-		float currentAngle = Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
+		float currentAngle = Minecraft.getInstance().gameRenderer.mainCamera().attributeProbe().getValue(sun ? EnvironmentAttributes.SUN_ANGLE : EnvironmentAttributes.MOON_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
 
 		celestial.rotate(Axis.XP.rotationDegrees(currentAngle));
 		position = celestial.transform(position);

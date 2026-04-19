@@ -28,7 +28,7 @@ public class MixinDimensionSpecialEffects {
 			ci.cancel();
 		}
 
-		FogType fogType = Minecraft.getInstance().gameRenderer.getMainCamera().getFluidInCamera();
+		FogType fogType = Minecraft.getInstance().gameRenderer.mainCamera().getFluidInCamera();
 
 		if (fogType != FogType.NONE) {
 			ci.cancel();

@@ -1,5 +1,6 @@
 package net.irisshaders.iris.mixin;
 
+import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
@@ -25,6 +26,7 @@ import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.layer.IsOutlineRenderStateShard;
 import net.irisshaders.iris.layer.OuterWrappedRenderType;
 import net.irisshaders.iris.pathways.HandRenderer;
+import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPhase;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.shadows.frustum.fallback.NonCullingFrustum;
@@ -46,7 +48,6 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
-import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.network.chat.Component;
@@ -78,9 +79,6 @@ public abstract class MixinLevelRenderer {
 	private static final String RENDER_CLOUDS = "Lnet/minecraft/client/renderer/LevelRenderer;renderClouds(Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FDDD)V";
 	private static final String RENDER_WEATHER = "Lnet/minecraft/client/renderer/LevelRenderer;renderSnowAndRain(Lnet/minecraft/client/renderer/LightTexture;FDDD)V";
 
-	@Shadow
-	@Final
-	private Minecraft minecraft;
 
 	@Unique
 	private WorldRenderingPipeline pipeline;
@@ -96,13 +94,10 @@ public abstract class MixinLevelRenderer {
 	private LevelRenderState levelRenderState;
 
 	@Shadow
-	protected abstract void cullTerrain(Camera camera, Frustum frustum, boolean spectator);
-
-	@Shadow
 	@Final
 	private CloudRenderer cloudRenderer;
-	@Shadow
-	private @Nullable ClientLevel level;
+
+	@Unique
 	private boolean warned;
 
 	@Unique
@@ -118,8 +113,8 @@ public abstract class MixinLevelRenderer {
 	// At this point we've ensured that Minecraft's main framebuffer is cleared.
 	// This is important or else very odd issues will happen with shaders that have a final pass that doesn't write to
 	// all pixels.
-	@Inject(method = "renderLevel", at = @At("HEAD"))
-	private void iris$setupPipeline(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
+	@Inject(method = "render", at = @At("HEAD"))
+	private void iris$setupPipeline(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
 		DHCompat.checkFrame();
 
 		IrisTimeUniforms.updateTime();
@@ -128,7 +123,7 @@ public abstract class MixinLevelRenderer {
 		float fakeTickDelta = deltaTracker.getGameTimeDeltaPartialTick(false);
 		CapturedRenderingState.INSTANCE.setTickDelta(fakeTickDelta);
 		if (((CloudRendererAccessor) this.cloudRenderer).getTexture() != null) {
-			CapturedRenderingState.INSTANCE.setCloudTime((this.level.getGameTime() % (((CloudRendererAccessor) this.cloudRenderer).getTexture().width() * 400) + fakeTickDelta) * 0.03F);
+			CapturedRenderingState.INSTANCE.setCloudTime((this.levelRenderState.gameTime % (((CloudRendererAccessor) this.cloudRenderer).getTexture().width() * 400) + fakeTickDelta) * 0.03F);
 		} else {
 			CapturedRenderingState.INSTANCE.setCloudTime(0);
 		}
@@ -141,7 +136,7 @@ public abstract class MixinLevelRenderer {
 		pipeline.setPhase(WorldRenderingPhase.NONE);
 		IrisRenderSystem.backupAndDisableCullingState(pipeline.shouldDisableOcclusionCulling());
 
-		if (Iris.shouldActivateWireframe() && this.minecraft.isLocalServer()) {
+		if (Iris.shouldActivateWireframe() && Minecraft.getInstance().isLocalServer()) {
 			IrisRenderSystem.setPolygonMode(GL43C.GL_LINE);
 		}
 	}
@@ -150,8 +145,8 @@ public abstract class MixinLevelRenderer {
 	// At this point we've ensured that Minecraft's main framebuffer is cleared.
 	// This is important or else very odd issues will happen with shaders that have a final pass that doesn't write to
 	// all pixels.
-	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/framegraph/FramePass;executes(Ljava/lang/Runnable;)V", ordinal = 0, shift = At.Shift.AFTER))
-	private void iris$beginLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci, @Local FrameGraphBuilder frameGraphBuilder, @Local(ordinal = 0) FramePass clearPass) {
+	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/framegraph/FramePass;executes(Ljava/lang/Runnable;)V", ordinal = 0, shift = At.Shift.AFTER))
+	private void iris$beginLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci, @Local FrameGraphBuilder frameGraphBuilder, @Local(ordinal = 0) FramePass clearPass) {
 		FramePass framePass = frameGraphBuilder.addPass("iris_setup");
 		this.targets.main = framePass.readsAndWrites(this.targets.main);
 		framePass.requires(clearPass);
@@ -163,14 +158,23 @@ public abstract class MixinLevelRenderer {
 	}
 
 
+	@WrapWithCondition(method = { MojLambdas.RENDER_MAIN_PASS, NeoLambdas.NEO_RENDER_MAIN_PASS }, require = 1, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;Lcom/mojang/blaze3d/textures/GpuSampler;)V"))
+	private boolean skipRenderChunks(ChunkSectionsToRender instance, ChunkSectionLayerGroup chunkSectionLayerGroup, GpuSampler gpuSampler) {
+		if (Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline pipeline) {
+			return !pipeline.skipAllRendering();
+		} else {
+			return true;
+		}
+	}
+
 	// Inject a bit early so that we can end our rendering before mods like VoxelMap (which inject at RETURN)
 	// render their waypoint beams.
-	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4fStack;popMatrix()Lorg/joml/Matrix4fStack;"))
-	private void iris$endLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
-		HandRenderer.INSTANCE.renderTranslucent(modelViewMatrix, deltaTracker.getGameTimeDeltaPartialTick(true), this.minecraft.gameRenderer.getMainCamera(), levelRenderState.cameraRenderState, this.minecraft.gameRenderer, pipeline);
+	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lorg/joml/Matrix4fStack;popMatrix()Lorg/joml/Matrix4fStack;"))
+	private void iris$endLevelRender(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
+		HandRenderer.INSTANCE.renderTranslucent(modelViewMatrix, deltaTracker.getGameTimeDeltaPartialTick(true), Minecraft.getInstance().gameRenderer.mainCamera(), levelRenderState.cameraRenderState, Minecraft.getInstance().gameRenderer, pipeline);
 		Profiler.get().popPush("iris_final");
 
-		if (Iris.shouldActivateWireframe() && this.minecraft.isLocalServer()) {
+		if (Iris.shouldActivateWireframe() && Minecraft.getInstance().isLocalServer()) {
 			IrisRenderSystem.setPolygonMode(GL43C.GL_FILL);
 		}
 		pipeline.finalizeLevelRendering();
@@ -179,27 +183,19 @@ public abstract class MixinLevelRenderer {
 		if (!warned) {
 			warned = true;
 			Iris.getUpdateChecker().getBetaInfo().ifPresent(info ->
-				Minecraft.getInstance().gui.getChat().addClientSystemMessage(Component.literal("A new beta is out for Iris " + info.betaTag + ". Please redownload it.").withStyle(ChatFormatting.BOLD, ChatFormatting.RED)));
+				Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal("A new beta is out for Iris " + info.betaTag + ". Please redownload it.").withStyle(ChatFormatting.BOLD, ChatFormatting.RED)));
 		}
 
 		IrisRenderSystem.restoreCullingState();
 
 	}
 
-	// Setup shadow terrain & render shadows before the main terrain setup. We need to do things in this order to
-	// avoid breaking other mods such as Light Overlay: https://github.com/IrisShaders/Iris/issues/1356
-
-	@WrapOperation(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;cullTerrain(Lnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/culling/Frustum;Z)V"))
-	private void iris$setShadows(LevelRenderer instance, Camera camRotX, Frustum camRotY, boolean b, Operation<Void> original) {
-		if (!Iris.isPackInUseQuick()) {
-			original.call(instance, camRotX, camRotY, b);
+	// Do this before main pass submission so shadow maps are ready before terrain draws.
+	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;addMainPass(Lcom/mojang/blaze3d/framegraph/FrameGraphBuilder;Lorg/joml/Matrix4fc;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;ZLnet/minecraft/client/renderer/state/level/LevelRenderState;Lnet/minecraft/util/profiling/ProfilerFiller;Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;)V"))
+	private void iris$renderTerrainShadows(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, CallbackInfo ci) {
+		if (Iris.isPackInUseQuick()) {
+			pipeline.renderShadows((LevelRendererAccessor) this, Minecraft.getInstance().gameRenderer.mainCamera(), this.levelRenderState.cameraRenderState);
 		}
-	}
-	// Do this before sky rendering so it's ready before the sky render starts.
-	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/LevelRenderer;addMainPass(Lcom/mojang/blaze3d/framegraph/FrameGraphBuilder;Lnet/minecraft/client/renderer/culling/Frustum;Lorg/joml/Matrix4fc;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;ZLnet/minecraft/client/renderer/state/level/LevelRenderState;Lnet/minecraft/client/DeltaTracker;Lnet/minecraft/util/profiling/ProfilerFiller;Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;)V"))
-	private void iris$renderTerrainShadows(GraphicsResourceAllocator resourceAllocator, DeltaTracker deltaTracker, boolean renderOutline, CameraRenderState cameraState, Matrix4fc modelViewMatrix, GpuBufferSlice terrainFog, Vector4f fogColor, boolean shouldRenderSky, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci) {
-		pipeline.renderShadows((LevelRendererAccessor) this, Minecraft.getInstance().gameRenderer.getMainCamera(), this.levelRenderState.cameraRenderState);
-		if (Iris.isPackInUseQuick()) this.cullTerrain(Minecraft.getInstance().gameRenderer.getMainCamera(), Minecraft.getInstance().gameRenderer.getMainCamera().getCullFrustum(), this.minecraft.player.isSpectator());
 	}
 
 	// TODO IMS 1.21.2
@@ -267,8 +263,9 @@ public abstract class MixinLevelRenderer {
 		pipeline.setPhase(WorldRenderingPhase.NONE);
 	}
 
-	@ModifyArg(method = "renderBlockOutline",
-		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;getBuffer(Lnet/minecraft/client/renderer/rendertype/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer;"))
+	// TODO 26.2
+	//@ModifyArg(method = "submitBlockOutline",
+	//	at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;getBuffer(Lnet/minecraft/client/renderer/rendertype/RenderType;)Lcom/mojang/blaze3d/vertex/VertexConsumer;"))
 	private RenderType iris$beginBlockOutline(RenderType type) {
 		return new OuterWrappedRenderType("iris:is_outline", type, IsOutlineRenderStateShard.INSTANCE);
 	}
@@ -277,7 +274,7 @@ public abstract class MixinLevelRenderer {
 	@Inject(method = { MojLambdas.RENDER_MAIN_PASS, NeoLambdas.NEO_RENDER_MAIN_PASS }, require = 1, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;renderTranslucentFeatures()V"))
 	private void iris$beginTranslucents(CallbackInfo ci,  @Local(ordinal = 0, argsOnly = true) Matrix4fc modelMatrix) {
 		pipeline.beginHand();
-		HandRenderer.INSTANCE.renderSolid(modelMatrix, Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true), Minecraft.getInstance().gameRenderer.getMainCamera(), levelRenderState.cameraRenderState, Minecraft.getInstance().gameRenderer, pipeline);
+		HandRenderer.INSTANCE.renderSolid(modelMatrix, Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true), Minecraft.getInstance().gameRenderer.mainCamera(), levelRenderState.cameraRenderState, Minecraft.getInstance().gameRenderer, pipeline);
 		Profiler.get().popPush("iris_pre_translucent");
 		pipeline.beginTranslucents();
 	}

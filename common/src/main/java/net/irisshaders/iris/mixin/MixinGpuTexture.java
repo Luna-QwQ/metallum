@@ -1,8 +1,8 @@
 package net.irisshaders.iris.mixin;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.textures.GpuTexture;
-import com.mojang.blaze3d.textures.TextureFormat;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.mixinterface.GpuTextureInterface;
 import org.lwjgl.opengl.GL46C;
@@ -18,9 +18,10 @@ public abstract class MixinGpuTexture extends GpuTexture implements GpuTextureIn
 	@Unique
 	private boolean mipmapNonLinear;
 
-	public MixinGpuTexture(int i, String string, TextureFormat textureFormat, int j, int k, int l, int m) {
-		super(i, string, textureFormat, j, k, l, m);
+	public MixinGpuTexture(@Usage int usage, String label, GpuFormat format, int width, int height, int depthOrLayers, int mipLevels) {
+		super(usage, label, format, width, height, depthOrLayers, mipLevels);
 	}
+
 
 	@Shadow
 	public abstract int glId();

@@ -43,7 +43,7 @@ public class MixinRenderTarget {
 	//@Inject(method = "bindWrite(Z)V", at = @At("RETURN"))
 	private void iris$onBindFramebuffer(boolean bl, CallbackInfo ci) {
 		// IntelliJ is wrong here. It doesn't understand how Mixin works.
-		boolean mainBound = this == (Object) Minecraft.getInstance().getMainRenderTarget();
+		boolean mainBound = this == (Object) Minecraft.getInstance().gameRenderer.mainRenderTarget();
 
 		Iris.getPipelineManager().getPipeline()
 			.ifPresent(pipeline -> pipeline.setIsMainBound(mainBound));

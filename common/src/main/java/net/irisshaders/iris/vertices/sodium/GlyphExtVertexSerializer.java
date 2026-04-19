@@ -14,10 +14,11 @@ import org.lwjgl.system.MemoryUtil;
 
 public class GlyphExtVertexSerializer implements VertexSerializer {
 	private static final int OFFSET_POSITION = 0;
-	private static final int OFFSET_COLOR = 12;
-	private static final int OFFSET_TEXTURE = 16;
+
 	private static final int OFFSET_MID_TEXTURE = IrisVertexFormats.GLYPH.getOffset(IrisVertexFormats.MID_TEXTURE_ELEMENT);
-	private static final int OFFSET_LIGHT = 24;
+	private static final int OFFSET_COLOR =  DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR.getOffset(VertexFormatElement.COLOR);
+	private static final int OFFSET_TEXTURE =  DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR.getOffset(VertexFormatElement.UV0);
+	private static final int OFFSET_LIGHT =  DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR.getOffset(VertexFormatElement.UV2);
 	private static final int OFFSET_NORMAL = IrisVertexFormats.GLYPH.getOffset(VertexFormatElement.NORMAL);
 	private static final int OFFSET_TANGENT = IrisVertexFormats.GLYPH.getOffset(IrisVertexFormats.TANGENT_ELEMENT);
 	private static final QuadViewEntity quad = new QuadViewEntity();
@@ -66,7 +67,7 @@ public class GlyphExtVertexSerializer implements VertexSerializer {
 			MemoryAccess.setShort(dst + 36, (short) CapturedRenderingState.INSTANCE.getCurrentRenderedItem());
 
 			if (i != 3) {
-				src += DefaultVertexFormat.POSITION_COLOR_TEX_LIGHTMAP.getVertexSize();
+				src += DefaultVertexFormat.POSITION_TEX_LIGHTMAP_COLOR.getVertexSize();
 				dst += IrisVertexFormats.GLYPH.getVertexSize();
 			}
 		}

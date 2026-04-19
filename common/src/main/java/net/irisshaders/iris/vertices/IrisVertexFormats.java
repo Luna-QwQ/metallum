@@ -1,5 +1,6 @@
 package net.irisshaders.iris.vertices;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import net.irisshaders.iris.Iris;
@@ -26,11 +27,11 @@ public class IrisVertexFormats {
 			}
 		}
 
-		ENTITY_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.SHORT, false, 2);
-		ENTITY_ID_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 3, VertexFormatElement.Type.USHORT, false, 4);
-		MID_TEXTURE_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.FLOAT, false, 2);
-		TANGENT_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.BYTE, true, 4);
-		MID_BLOCK_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, VertexFormatElement.Type.BYTE, false, 3);
+		ENTITY_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, GpuFormat.RG16_SINT);
+		ENTITY_ID_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 3, GpuFormat.RGBA16_UINT);
+		MID_TEXTURE_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, GpuFormat.RG32_FLOAT);
+		TANGENT_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, GpuFormat.RGBA8_SNORM);
+		MID_BLOCK_ELEMENT = VertexFormatElement.register(getNextVertexFormatElementId(), 0, GpuFormat.RGB8_SINT);
 
 		TERRAIN = VertexFormat.builder()
 			.add("Position", VertexFormatElement.POSITION)
@@ -61,9 +62,9 @@ public class IrisVertexFormats {
 
 		GLYPH = VertexFormat.builder()
 			.add("Position", VertexFormatElement.POSITION)
-			.add("Color", VertexFormatElement.COLOR)
 			.add("UV0", VertexFormatElement.UV0)
 			.add("UV2", VertexFormatElement.UV2)
+			.add("Color", VertexFormatElement.COLOR)
 			.add("Normal", VertexFormatElement.NORMAL)
 			.padding(1)
 			.add("iris_Entity", ENTITY_ID_ELEMENT)
@@ -83,7 +84,7 @@ public class IrisVertexFormats {
 		Iris.logger.info("Vertex format: " + format + " with byte size " + format.getVertexSize());
 		int byteIndex = 0;
 		for (VertexFormatElement element : format.getElements()) {
-			Iris.logger.info(element + " @ " + byteIndex + " is " + element.type() + " " + element.normalized());
+			Iris.logger.info(element + " @ " + byteIndex + " is " + element.id());
 			byteIndex += element.byteSize();
 		}
 	}

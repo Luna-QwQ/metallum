@@ -32,9 +32,9 @@ public class DebugLoadFailedGridScreen extends Screen {
 		LayoutSettings layoutSettings3 = widget.newCellSettings().alignVerticallyTop().paddingTop(30).alignHorizontallyRight();
 		int numWidgets = 0;
 		widget.addChild(new DebugTextWidget(0, 0, this.width - 80, font.lineHeight * 15, font, exception), ++numWidgets, 0, 1, 2, layoutSettings);
-		widget.addChild(Button.builder(Component.translatable("menu.returnToGame"), arg2 -> this.minecraft.setScreen(parent)).width(100).build(), ++numWidgets, 0, 1, 2, layoutSettings2);
+		widget.addChild(Button.builder(Component.translatable("menu.returnToGame"), arg2 -> this.minecraft.gui.setScreen(parent)).width(100).build(), ++numWidgets, 0, 1, 2, layoutSettings2);
 		widget.addChild(Button.builder(Component.literal("Reload pack"), arg2 -> {
-			Minecraft.getInstance().setScreen(parent);
+			Minecraft.getInstance().gui.setScreen(parent);
 			try {
 				Iris.reload();
 			} catch (IOException e) {

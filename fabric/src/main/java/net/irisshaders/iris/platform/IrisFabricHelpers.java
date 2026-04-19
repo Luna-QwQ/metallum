@@ -1,6 +1,5 @@
 package net.irisshaders.iris.platform;
 
-import com.mojang.blaze3d.textures.TextureFormat;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
@@ -72,17 +71,4 @@ public class IrisFabricHelpers implements IrisPlatformHelpers {
 		return state;
 	}
 
-	@Override
-	public TextureFormat mojangDepthFormat(DepthBufferFormat depthFormat) {
-		return switch (depthFormat) {
-			case DEPTH -> TextureFormat.DEPTH32;
-			case DEPTH16 -> null;
-			case DEPTH24 -> null;
-			case DEPTH32 -> TextureFormat.DEPTH32;
-			case DEPTH32F -> null;
-			case DEPTH_STENCIL -> null;
-			case DEPTH24_STENCIL8 -> null;
-			case DEPTH32F_STENCIL8 -> null;
-		};
-	}
 }

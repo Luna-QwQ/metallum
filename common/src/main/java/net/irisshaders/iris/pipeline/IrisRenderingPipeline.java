@@ -236,7 +236,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		this.resolver = new ProgramFallbackResolver(programSet);
 		this.pack = programSet.getPack();
 
-		RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+		RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
 		GpuTexture depthTexture  = main.getDepthTexture();
 		int internalFormat = GlConst.toGlInternalId(depthTexture.getFormat());
 		DepthBufferFormat depthBufferFormat = DepthBufferFormat.fromGlEnumOrDefault(internalFormat);
@@ -879,7 +879,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 			WorldRenderingSettings.INSTANCE.setBlockStateIds(
 				BlockMaterialMapping.createBlockStateIdMap(pack.getIdMap().getBlockProperties(), pack.getIdMap().getTagEntries()));
 			WorldRenderingSettings.INSTANCE.setBlockTypeIds(BlockMaterialMapping.createBlockTypeMap(pack.getIdMap().getBlockRenderTypeMap()));
-			Minecraft.getInstance().levelRenderer.allChanged();
+			Minecraft.getInstance().levelExtractor.allChanged();
 			initializedBlockIds = true;
 		}
 
@@ -940,7 +940,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		// Update custom uniforms
 		this.customUniforms.update();
 
-		RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+		RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
 
 		GpuTexture depthTexture = main.getDepthTexture();
 		DepthBufferFormat depthBufferFormat = DepthBufferFormat.fromGlEnumOrDefault(GlConst.toGlInternalId(main.getDepthTexture().getFormat()));
@@ -1000,7 +1000,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 		//
 		// If we forget to do this, then weird lines appear at the top of the screen and the right of the screen
 		// on Sildur's Vibrant Shaders.
-		Minecraft.getInstance().getMainRenderTarget().iris$bindFramebuffer();
+		Minecraft.getInstance().gameRenderer.mainRenderTarget().iris$bindFramebuffer();
 		isMainBound = true;
 
 		if (changed) {
@@ -1094,7 +1094,7 @@ public class IrisRenderingPipeline implements WorldRenderingPipeline, ShaderRend
 
 	@Override
 	public void finalizeGameRendering() {
-		colorSpaceConverter.process((GlTexture) Minecraft.getInstance().getMainRenderTarget().getColorTexture());
+		colorSpaceConverter.process((GlTexture) Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTexture());
 	}
 
 	@Override

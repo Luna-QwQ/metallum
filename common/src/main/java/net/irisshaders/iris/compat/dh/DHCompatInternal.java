@@ -59,9 +59,9 @@ public class DHCompatInternal {
 			return;
 		}
 
-		cachedVersion = ((Blaze3dRenderTargetExt) Minecraft.getInstance().getMainRenderTarget()).iris$getDepthBufferVersion();
+		cachedVersion = ((Blaze3dRenderTargetExt) Minecraft.getInstance().gameRenderer.mainRenderTarget()).iris$getDepthBufferVersion();
 
-		createDepthTex(Minecraft.getInstance().getMainRenderTarget().width, Minecraft.getInstance().getMainRenderTarget().height);
+		createDepthTex(Minecraft.getInstance().gameRenderer.mainRenderTarget().width, Minecraft.getInstance().gameRenderer.mainRenderTarget().height);
 		translucentDepthDirty = true;
 
 		ProgramSource terrain = pipeline.getDHTerrainShader().get();
@@ -159,9 +159,9 @@ public class DHCompatInternal {
 	}
 
 	public void reconnectDHTextures(int depthTex) {
-		if (((Blaze3dRenderTargetExt) Minecraft.getInstance().getMainRenderTarget()).iris$getDepthBufferVersion() != cachedVersion) {
-			cachedVersion = ((Blaze3dRenderTargetExt) Minecraft.getInstance().getMainRenderTarget()).iris$getDepthBufferVersion();
-			createDepthTex(Minecraft.getInstance().getMainRenderTarget().width, Minecraft.getInstance().getMainRenderTarget().height);
+		if (((Blaze3dRenderTargetExt) Minecraft.getInstance().gameRenderer.mainRenderTarget()).iris$getDepthBufferVersion() != cachedVersion) {
+			cachedVersion = ((Blaze3dRenderTargetExt) Minecraft.getInstance().gameRenderer.mainRenderTarget()).iris$getDepthBufferVersion();
+			createDepthTex(Minecraft.getInstance().gameRenderer.mainRenderTarget().width, Minecraft.getInstance().gameRenderer.mainRenderTarget().height);
 		}
 		if (storedDepthTex != depthTex && dhTerrainFramebuffer != null) {
 			storedDepthTex = depthTex;

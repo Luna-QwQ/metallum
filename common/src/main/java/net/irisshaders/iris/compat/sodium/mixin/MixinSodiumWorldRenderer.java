@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
+import net.irisshaders.iris.mixinterface.ShadowRenderListAccess;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
 import net.irisshaders.iris.shadows.ShadowRenderer;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
@@ -23,6 +24,7 @@ import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -34,9 +36,26 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.SortedSet;
 
 @Mixin(SodiumWorldRenderer.class)
-public class MixinSodiumWorldRenderer {
+public class MixinSodiumWorldRenderer implements ShadowRenderListAccess {
+	@Shadow(remap = false)
+	private RenderSectionManager renderSectionManager;
+
 	@Unique
 	private float lastSunAngle;
+
+	@Override
+	public void iris$beginShadowRenderListScope() {
+		if (this.renderSectionManager instanceof ShadowRenderListAccess shadowRenderListAccess) {
+			shadowRenderListAccess.iris$beginShadowRenderListScope();
+		}
+	}
+
+	@Override
+	public void iris$endShadowRenderListScope() {
+		if (this.renderSectionManager instanceof ShadowRenderListAccess shadowRenderListAccess) {
+			shadowRenderListAccess.iris$endShadowRenderListScope();
+		}
+	}
 
 
 	@Redirect(method = "setupTerrain", remap = false,
@@ -45,7 +64,7 @@ public class MixinSodiumWorldRenderer {
 			remap = false))
 	private boolean iris$forceChunkGraphRebuildInShadowPass(RenderSectionManager instance) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
-			float sunAngle = Minecraft.getInstance().gameRenderer.getMainCamera().attributeProbe().getValue(EnvironmentAttributes.SUN_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
+			float sunAngle = Minecraft.getInstance().gameRenderer.mainCamera().attributeProbe().getValue(EnvironmentAttributes.SUN_ANGLE, CapturedRenderingState.INSTANCE.getTickDelta());
 			if (lastSunAngle != sunAngle) {
 				lastSunAngle = sunAngle;
 				return true;

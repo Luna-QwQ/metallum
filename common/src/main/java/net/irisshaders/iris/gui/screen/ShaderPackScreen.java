@@ -146,9 +146,9 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		backgroundInit = 1.0f;
 
 		if (Minecraft.getInstance().hasControlDown() && InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), GLFW.GLFW_KEY_D)) {
-			Minecraft.getInstance().setScreen(new ConfirmScreen((option) -> {
+			Minecraft.getInstance().gui.setScreen(new ConfirmScreen((option) -> {
 				Iris.setDebug(option);
-				Minecraft.getInstance().setScreen(this);
+				Minecraft.getInstance().gui.setScreen(this);
 			}, Component.literal("Shader debug mode toggle"),
 				Component.literal("Debug mode helps investigate problems and shows shader errors. Would you like to enable it?"),
 				Component.literal("Yes"),
@@ -156,13 +156,13 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		}
 
 		if (Minecraft.getInstance().hasControlDown() && InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), GLFW.GLFW_KEY_G)) {
-			Minecraft.getInstance().setScreen(new ConfirmScreen((option) -> {
+			Minecraft.getInstance().gui.setScreen(new ConfirmScreen((option) -> {
 				try {
 					Iris.getIrisConfig().setUnknown(option);
 				} catch (IOException e) {
 					throw new RuntimeException(e);
 				}
-				Minecraft.getInstance().setScreen(this);
+				Minecraft.getInstance().gui.setScreen(this);
 			}, Component.literal("Unknown shader toggle"),
 				Component.literal("This allows unknown shaders to load in."),
 				Component.literal("Enable"),
@@ -232,11 +232,11 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 		double x = event.x();
 		double y = event.y();
 		if (this.updateComponent != null && x < widthValue && y > (this.height - 10) && y < this.height) {
-			this.minecraft.setScreen(new ConfirmLinkScreen(bl -> {
+			this.minecraft.gui.setScreen(new ConfirmLinkScreen(bl -> {
 				if (bl) {
 					Iris.getUpdateChecker().getUpdateLink().ifPresent(Util.getPlatform()::openUri);
 				}
-				this.minecraft.setScreen(this);
+				this.minecraft.gui.setScreen(this);
 			}, Iris.getUpdateChecker().getUpdateLink().map(URI::toString).orElse(""), true));
 		}
 		return super.mouseClicked(event, bl2);
@@ -587,7 +587,7 @@ public class ShaderPackScreen extends Screen implements HudHideable {
 			Iris.logger.error("Failed to safely close shaderpack selection!", e);
 		}
 
-		this.minecraft.setScreen(parent);
+		this.minecraft.gui.setScreen(parent);
 	}
 
 	private void dropChangesAndClose() {

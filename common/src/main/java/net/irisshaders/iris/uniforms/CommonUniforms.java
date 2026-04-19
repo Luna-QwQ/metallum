@@ -141,7 +141,7 @@ public final class CommonUniforms {
 		SmoothedVec2f eyeBrightnessSmooth = new SmoothedVec2f(directives.getEyeBrightnessHalfLife(), directives.getEyeBrightnessHalfLife(), CommonUniforms::getEyeBrightness, updateNotifier);
 
 		uniforms
-			.uniform1b(PER_FRAME, "hideGUI", () -> client.options.hideGui)
+			.uniform1b(PER_FRAME, "hideGUI", client.gui.hud::isHidden)
 			.uniform1b(PER_FRAME, "isRightHanded", () -> client.options.mainHand().get() == HumanoidArm.RIGHT)
 			.uniform1i(PER_FRAME, "isEyeInWater", CommonUniforms::isEyeInWater)
 			.uniform1f(PER_FRAME, "blindness", CommonUniforms::getBlindness)
@@ -234,7 +234,7 @@ public final class CommonUniforms {
 			return ZERO_VECTOR_3d;
 		}
 
-		int skyColor = client.gameRenderer.getMainCamera().attributeProbe().getValue(EnvironmentAttributes.SKY_COLOR,
+		int skyColor = client.gameRenderer.mainCamera().attributeProbe().getValue(EnvironmentAttributes.SKY_COLOR,
 			CapturedRenderingState.INSTANCE.getTickDelta());
 
 		return new Vector3d(ARGB.redFloat(skyColor), ARGB.greenFloat(skyColor), ARGB.blueFloat(skyColor));
@@ -331,7 +331,7 @@ public final class CommonUniforms {
 				//
 				// See: https://github.com/apace100/apoli/blob/320b0ef547fbbf703de7154f60909d30366f6500/src/main/java/io/github/apace100/apoli/mixin/GameRendererMixin.java#L153
 				float nightVisionStrength =
-					GameRenderer.getNightVisionScale(livingEntity, CapturedRenderingState.INSTANCE.getTickDelta());
+					GameRenderer.nightVisionScale(livingEntity, CapturedRenderingState.INSTANCE.getTickDelta());
 
 				if (nightVisionStrength > 0) {
 					// Just protecting against potential weird mod behavior
@@ -367,7 +367,7 @@ public final class CommonUniforms {
 		// I'm not sure what the best way to deal with this is, but the current approach seems to be an acceptable one -
 		// after all, disabling the overlay results in the intended effect of it not really looking like you're
 		// underwater on most shaderpacks. For now, I will leave this as-is, but it is something to keep in mind.
-		FogType submersionType = client.gameRenderer.getMainCamera().getFluidInCamera();
+		FogType submersionType = client.gameRenderer.mainCamera().getFluidInCamera();
 		boolean isSpectator = client.player != null && client.player.isSpectator();
 		if (submersionType == FogType.WATER) {
 			return 1;

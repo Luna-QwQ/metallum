@@ -225,13 +225,13 @@ public class ShaderPack {
 		List<String> invalidFeatureFlags = invalidFlagList.stream().map(FeatureFlags::getHumanReadableName).toList();
 
 		if (!invalidFeatureFlags.isEmpty()) {
-			if (Minecraft.getInstance().screen instanceof ShaderPackScreen) {
+			if (Minecraft.getInstance().gui.screen() instanceof ShaderPackScreen) {
 				MutableComponent component = Component.translatable("iris.unsupported.pack.description", FeatureFlags.getInvalidStatus(invalidFlagList), invalidFeatureFlags.stream()
 					.collect(Collectors.joining(", ", ": ", ".")));
 				if (SystemUtils.IS_OS_MAC) {
 					component = component.append(Component.translatable("iris.unsupported.pack.macos"));
 				}
-				Minecraft.getInstance().setScreen(new FeatureMissingErrorScreen(Minecraft.getInstance().screen, Component.translatable("iris.unsupported.pack"), component));
+				Minecraft.getInstance().gui.setScreen(new FeatureMissingErrorScreen(Minecraft.getInstance().gui.screen(), Component.translatable("iris.unsupported.pack"), component));
 			}
 			IrisApi.getInstance().getConfig().setShadersEnabledAndApply(false);
 		}

@@ -15,7 +15,6 @@ accessible  class   net/minecraft/client/OptionInstance$ValueSet
 extendable  class   net/minecraft/client/OptionInstance
 accessible method com/mojang/blaze3d/opengl/GlProgram <init> (ILjava/lang/String;)V
 accessible field com/mojang/blaze3d/opengl/GlProgram uniformsByName Ljava/util/Map;
-accessible  class   net/minecraft/client/renderer/chunk/SectionRenderDispatcher$RenderSection$RebuildTask
 extendable  class   net/minecraft/core/RegistryAccess$RegistryEntry
 accessible field com/mojang/blaze3d/platform/NativeImage pixels J
 mutable field net/minecraft/client/renderer/LevelRenderer renderBuffers Lnet/minecraft/client/renderer/RenderBuffers;

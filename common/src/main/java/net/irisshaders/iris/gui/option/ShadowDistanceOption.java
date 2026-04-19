@@ -8,9 +8,9 @@ import java.util.function.Consumer;
 
 public class ShadowDistanceOption<T> extends OptionInstance<T> {
 
-	public ShadowDistanceOption(String string, TooltipSupplier<T> arg, CaptionBasedToString<T> arg2, OptionInstance.ValueSet<T> arg3, T object, Consumer<T> consumer) {
-		super(string, arg, arg2, arg3, object, consumer);
 
+	public ShadowDistanceOption(String captionId, TooltipSupplier<T> tooltip, CaptionBasedToString<T> toString, ValueSet<T> values, T initialValue, ValueUpdateListener<? super T> onValueUpdate) {
+		super(captionId, tooltip, toString, values, initialValue, onValueUpdate);
 	}
 
 	@Override

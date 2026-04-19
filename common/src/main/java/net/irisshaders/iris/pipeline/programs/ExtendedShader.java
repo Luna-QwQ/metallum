@@ -4,11 +4,11 @@ import com.mojang.blaze3d.opengl.GlProgram;
 import com.mojang.blaze3d.opengl.GlRenderPass;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.Uniform;
+import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.UniformType;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.logging.LogUtils;
@@ -36,6 +36,7 @@ import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.BindGroupLayouts;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
@@ -102,29 +103,45 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 
 		((ShaderInstanceInterface) this).setShouldSkip(SkipList.NONE);
 
-		List<RenderPipeline.UniformDescription> uniformList = new ArrayList<>();
-		List<String> samplerList = new ArrayList<>();
-		uniformList.add(new RenderPipeline.UniformDescription("DynamicTransforms", UniformType.UNIFORM_BUFFER));
-		uniformList.add(new RenderPipeline.UniformDescription("CloudInfo", UniformType.UNIFORM_BUFFER));
-		uniformList.add(new RenderPipeline.UniformDescription("CloudFaces", UniformType.TEXEL_BUFFER, TextureFormat.RED8I));
-		uniformList.add(new RenderPipeline.UniformDescription("Projection", UniformType.UNIFORM_BUFFER));
-		uniformList.add(new RenderPipeline.UniformDescription("Fog", UniformType.UNIFORM_BUFFER));
-		uniformList.add(new RenderPipeline.UniformDescription("Globals", UniformType.UNIFORM_BUFFER));
-
+		boolean has1 = false, has2 = false, has0 = false;
 		if (vertexFormat.contains(VertexFormatElement.UV)) {
 			this.hasUV = true;
-			samplerList.add("Sampler0");
+			has0 = true;
 		}
 
 		if (vertexFormat.contains(VertexFormatElement.UV1)) {
-			samplerList.add("Sampler1");
+			has1 = true;
 		}
 
 		if (vertexFormat.contains(VertexFormatElement.UV2)) {
-			samplerList.add("Sampler2");
+			has2 = true;
 		}
 
-		super.setupUniforms(uniformList, samplerList);
+		BindGroupLayout samplr = null;
+
+		if (has0) {
+			if (has1) {
+				if (has2) {
+					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2;
+				} else {
+					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1;
+				}
+			} else if (has2) {
+				samplr = BindGroupLayouts.SAMPLER0_SAMPLER2;
+			} else {
+				samplr = BindGroupLayouts.SAMPLER0;
+			}
+		}
+
+		List<BindGroupLayout> layouts = new ArrayList<>();
+		if (samplr != null) layouts.add(samplr);
+		layouts.add(BindGroupLayouts.DYNAMIC_TRANSFORMS);
+		layouts.add(BindGroupLayouts.CLOUD_INFO);
+		layouts.add(BindGroupLayouts.PROJECTION);
+		layouts.add(BindGroupLayouts.GLOBALS);
+		layouts.add(BindGroupLayouts.FOG);
+
+		super.setupBindGroupLayouts(layouts);
 
 		ProgramUniforms.Builder uniformBuilder = ProgramUniforms.builder(string, programId);
 		ProgramSamplers.Builder samplerBuilder = ProgramSamplers.builder(programId, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
@@ -180,12 +197,12 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 		GlStateManager._glUseProgram(getProgramId());
 
 		if (modelViewInverse > -1) {
-			IrisRenderSystem.uniformMatrix4fv(modelViewInverse, false, RenderSystem.getModelViewMatrix().invert(tempMatrix4f).get(tempFloats));
+			IrisRenderSystem.uniformMatrix4fv(modelViewInverse, false, RenderSystem.getModelViewMatrixCopy().invert(tempMatrix4f).get(tempFloats));
 		}
 
 
 		if (normalMat > -1) {
-			tempF = RenderSystem.getModelViewMatrix().invert(tempMatrix4f).transpose3x3(normalMatrix).get(tempF);
+			tempF = RenderSystem.getModelViewMatrixCopy().invert(tempMatrix4f).transpose3x3(normalMatrix).get(tempF);
 
 			IrisRenderSystem.uniformMatrix3fv(normalMat, false, tempF);
 		}

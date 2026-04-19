@@ -1,5 +1,6 @@
 package net.irisshaders.iris.layer;
 
+import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.vertex.MeshData;
@@ -58,9 +59,11 @@ public class OuterWrappedRenderType extends RenderType {
 	}
 
 	@Override
-	public void draw(MeshData meshData) {
+	public void drawFromBuffer(
+		final GpuBuffer vertexBuffer, final GpuBuffer indexBuffer, final VertexFormat.IndexType indexType, final int baseVertex, final int firstIndex, final int indexCount
+	) {
 		extra.setup();
-		wrapped.draw(meshData);
+		wrapped.drawFromBuffer(vertexBuffer, indexBuffer, indexType, baseVertex, firstIndex, indexCount);
 		extra.clear();
 	}
 
@@ -87,11 +90,6 @@ public class OuterWrappedRenderType extends RenderType {
 	@Override
 	public boolean affectsCrumbling() {
 		return wrapped.affectsCrumbling();
-	}
-
-	@Override
-	public int bufferSize() {
-		return wrapped.bufferSize();
 	}
 
 	@Override

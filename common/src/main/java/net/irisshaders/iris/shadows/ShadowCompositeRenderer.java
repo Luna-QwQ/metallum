@@ -196,7 +196,7 @@ public class ShadowCompositeRenderer {
 		GpuBuffer indices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).getBuffer(6);
 		VertexFormat.IndexType type = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS).type();
 
-		try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Shadow composites", Minecraft.getInstance().getMainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
+		try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Shadow composites", Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView(), OptionalInt.empty())) {
 			pass.setPipeline(CompositeRenderer.COMPOSITE_PIPELINE);
 			pass.setVertexBuffer(0, FullScreenQuadRenderer.INSTANCE.getQuad());
 			pass.setIndexBuffer(indices, type);
@@ -208,7 +208,7 @@ public class ShadowCompositeRenderer {
 						ranCompute = true;
 						computeProgram.use();
 						this.customUniforms.push(computeProgram);
-						com.mojang.blaze3d.pipeline.RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+						com.mojang.blaze3d.pipeline.RenderTarget main = Minecraft.getInstance().gameRenderer.mainRenderTarget();
 						computeProgram.dispatch(main.width, main.height);
 					}
 				}

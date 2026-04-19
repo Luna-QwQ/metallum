@@ -30,9 +30,4 @@ public abstract class MixinPreventRebuildNearInShadowPass {
 	@Final
 	private ObjectArrayList<SectionRenderDispatcher.RenderSection> visibleSections;
 
-	@Inject(method = "cullTerrain",
-		at = @At(value = "TAIL"))
-	private void iris$preventRebuildNearInShadowPass(Camera camera, Frustum frustum, boolean bl, CallbackInfo ci) {
-
-	}
 }

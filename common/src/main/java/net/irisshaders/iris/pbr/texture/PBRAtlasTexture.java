@@ -1,5 +1,6 @@
 package net.irisshaders.iris.pbr.texture;
 
+import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.systems.GpuDevice;
@@ -9,7 +10,6 @@ import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.mojang.blaze3d.textures.TextureFormat;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.mixin.texture.SpriteContentsAnimatedTextureAccessor;
 import net.irisshaders.iris.mixin.texture.SpriteContentsFrameInfoAccessor;
@@ -145,7 +145,7 @@ public class PBRAtlasTexture extends AbstractTexture implements PBRDumpable {
 		Iris.logger.info("Created: {}x{}x{} {}-atlas", i, j, k, this.location);
 		GpuDevice gpuDevice = RenderSystem.getDevice();
 		this.close();
-		this.texture = gpuDevice.createTexture(this.location::toString, 15, TextureFormat.RGBA8, i, j, 1, k + 1);
+		this.texture = gpuDevice.createTexture(this.location::toString, 15, GpuFormat.RGBA8_UNORM, i, j, 1, k + 1);
 		this.textureView = gpuDevice.createTextureView(this.texture);
 		this.width = i;
 		this.height = j;
@@ -176,7 +176,7 @@ public class PBRAtlasTexture extends AbstractTexture implements PBRDumpable {
 		List<PBRTextureAtlasSprite> sprites = new ArrayList<>();
 		List<SpriteContents.AnimationState> animationStates = new ArrayList<>();
 		int animatedSpriteCount = (int) texturesByName.values().stream().filter(TextureAtlasSprite::isAnimated).count();
-		int spriteUboSize = Mth.roundToward(SpriteContents.UBO_SIZE, RenderSystem.getDevice().getUniformOffsetAlignment());
+		int spriteUboSize = Mth.roundToward(SpriteContents.UBO_SIZE, RenderSystem.getDevice().getDeviceInfo().limits().minUniformOffsetAlignment());
 		int uboBlockSize = spriteUboSize * this.mipLevelCount;
 		ByteBuffer spriteUboBuffer = MemoryUtil.memAlloc(animatedSpriteCount * uboBlockSize);
 		int animationIndex = 0;
@@ -231,7 +231,7 @@ public class PBRAtlasTexture extends AbstractTexture implements PBRDumpable {
 
 	private void uploadInitialContents() {
 		GpuDevice gpuDevice = RenderSystem.getDevice();
-		int spriteUboSize = Mth.roundToward(SpriteContents.UBO_SIZE, RenderSystem.getDevice().getUniformOffsetAlignment());
+		int spriteUboSize = Mth.roundToward(SpriteContents.UBO_SIZE, RenderSystem.getDevice().getDeviceInfo().limits().minUniformOffsetAlignment());
 		int uboBlockSize = spriteUboSize * this.mipLevelCount;
 		GpuSampler gpuSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
 		List<PBRTextureAtlasSprite> staticSprites = this.sprites.stream().filter(textureAtlasSprite -> !textureAtlasSprite.isAnimated()).toList();
@@ -244,7 +244,7 @@ public class PBRAtlasTexture extends AbstractTexture implements PBRDumpable {
 			GpuTexture gpuTexture = gpuDevice.createTexture(
 				() -> textureAtlasSprite.contents().name().toString(),
 				5,
-				TextureFormat.RGBA8,
+				GpuFormat.RGBA8_UNORM,
 				textureAtlasSprite.contents().width(),
 				textureAtlasSprite.contents().height(),
 				1,
