@@ -33,7 +33,9 @@ public class MetalBackend implements GpuBackend {
 	}
 
 	@Override
-	public GpuDevice createDevice(final long window, final ShaderSource defaultShaderSource, final GpuDebugOptions debugOptions)
+	public GpuDevice createDevice(
+			final long window, final ShaderSource defaultShaderSource, final GpuDebugOptions debugOptions, final Runnable criticalShaderLoader
+	)
 		throws BackendCreationException {
 		MetalProbe.ProbeResult probe = MetalProbe.probe();
 		if (!probe.supported()) {
@@ -58,7 +60,7 @@ public class MetalBackend implements GpuBackend {
 		);
 
 		try {
-			return new GpuDevice(new MetalDevice(defaultShaderSource, bootstrap, debugOptions));
+			return new GpuDevice(new MetalDevice(defaultShaderSource, bootstrap, debugOptions), criticalShaderLoader);
 		} catch (Throwable throwable) {
 			throw new BackendCreationException("Metal device initialization failed: " + throwable.getMessage(), BackendCreationException.Reason.OTHER);
 		}

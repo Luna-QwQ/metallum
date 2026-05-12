@@ -5,22 +5,24 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import com.sun.jna.Pointer;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.Set;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.jspecify.annotations.NonNull;
 
 @Environment(EnvType.CLIENT)
 final class MetalSurface implements GpuSurfaceBackend {
-	private static final Set<GpuSurface.PresentMode> SUPPORTED_PRESENT_MODES = EnumSet.of(GpuSurface.PresentMode.FIFO, GpuSurface.PresentMode.IMMEDIATE);
-	private final long windowHandle;
+	private static final Set<GpuSurface.PresentMode> SUPPORTED_PRESENT_MODES = EnumSet.of(GpuSurface.PresentMode.FIFO, GpuSurface.PresentMode.MAILBOX);
 	private final MetalDevice device;
 	private final MetalCocoaBootstrap.BootstrapContext bootstrap;
 	private GpuSurface.Configuration configuration;
+	private Pointer drawable;
+	private MetalCommandEncoder pendingPresentEncoder;
 
-	MetalSurface(final long windowHandle, final MetalDevice device, final MetalCocoaBootstrap.BootstrapContext bootstrap) {
-		this.windowHandle = windowHandle;
+	MetalSurface(final long ignoredWindowHandle, final MetalDevice device, final MetalCocoaBootstrap.BootstrapContext bootstrap) {
 		this.device = device;
 		this.bootstrap = bootstrap;
 	}
@@ -31,15 +33,12 @@ final class MetalSurface implements GpuSurfaceBackend {
 			throw new SurfaceException("Metal surface configuration must be positive, got " + config.width() + "x" + config.height());
 		}
 
-		int nativeResult = MetalNativeBridge.INSTANCE.metallum_configure_layer(
+		MetalNativeBridge.INSTANCE.metallum_configure_layer(
 			this.bootstrap.metalLayer(),
 			config.width(),
 			config.height(),
-			config.presentMode() == GpuSurface.PresentMode.IMMEDIATE ? 1 : 0
+			config.presentMode() == GpuSurface.PresentMode.MAILBOX ? 1 : 0
 		);
-		if (nativeResult != 0) {
-			throw new SurfaceException("Failed to configure CAMetalLayer drawable size for " + config.width() + "x" + config.height());
-		}
 
 		this.configuration = config;
 	}
@@ -54,51 +53,74 @@ final class MetalSurface implements GpuSurfaceBackend {
 		if (this.configuration == null) {
 			throw new SurfaceException("Metal surface must be configured before acquire");
 		}
-		int result = MetalNativeBridge.INSTANCE.metallum_acquire_next_drawable(this.device.commandQueue(), this.bootstrap.metalLayer());
-		if (result != 0) {
-			throw new SurfaceException("Failed to acquire Metal drawable (code " + result + ")");
+		if (!MetalProbe.isNullPointer(this.drawable)) {
+			throw new SurfaceException("Metal drawable is already acquired");
+		}
+		this.drawable = MetalNativeBridge.INSTANCE.CAMetalLayer_nextDrawable(this.bootstrap.metalLayer());
+		if (MetalProbe.isNullPointer(this.drawable)) {
+			throw new SurfaceException("Failed to acquire Metal drawable");
 		}
 	}
 
 	@Override
-	public void blitFromTexture(final CommandEncoderBackend commandEncoder, final GpuTextureView textureView) {
-		if (commandEncoder instanceof MetalCommandEncoder metalEncoder) {
-			metalEncoder.flushPendingTextureViewClear(textureView);
+	public void blitFromTexture(final @NonNull CommandEncoderBackend commandEncoder, final @NonNull GpuTextureView textureView) {
+		if (!(commandEncoder instanceof MetalCommandEncoder metalEncoder)) {
+			throw new IllegalArgumentException("Metal surface requires MetalCommandEncoder");
+		}
+		if (MetalProbe.isNullPointer(this.drawable)) {
+			throw new IllegalStateException("Metal surface has no acquired drawable");
 		}
 
+		metalEncoder.flushPendingTextureViewClear(textureView);
+		metalEncoder.submitRenderPass();
+		metalEncoder.endBlitEncoder();
+		metalEncoder.endRenderEncoder();
 		MetalGpuTexture source = (MetalGpuTexture)textureView.texture();
-		int result = MetalNativeBridge.INSTANCE.metallum_enqueue_present_texture_to_layer(
-			this.device.commandQueue(),
-			this.bootstrap.metalLayer(),
+		MetalNativeBridge.INSTANCE.MTLCommandBuffer_encodePresentTextureToDrawable(
+			metalEncoder.commandBuffer(),
+			this.drawable,
 			source.nativeHandle()
 		);
-		if (result != 0) {
-			throw new IllegalStateException("Failed to enqueue Metal present for texture '" + source.getLabel() + "' (code " + result + ")");
-		}
+
+		this.pendingPresentEncoder = metalEncoder;
 	}
 
 	@Override
 	public void present() {
-		int result = MetalNativeBridge.INSTANCE.metallum_present_pending_drawable(this.device.commandQueue());
-		if (result != 0) {
-			throw new IllegalStateException("Failed to present pending Metal drawable (code " + result + ")");
+		if (this.pendingPresentEncoder == null || MetalProbe.isNullPointer(this.drawable)) {
+			throw new IllegalStateException("Metal surface has no pending drawable present");
 		}
+		Pointer presentedDrawable = this.drawable;
+		this.drawable = null;
+		MetalCommandEncoder encoder = this.pendingPresentEncoder;
+		this.pendingPresentEncoder = null;
+		encoder.submit();
+
+		Pointer presentCommandBuffer = MetalNativeBridge.INSTANCE.MTLCommandQueue_makeCommandBuffer(
+			this.device.commandQueue(),
+			this.device.useLabels() ? "Metallum present" : null
+		);
+		if (MetalProbe.isNullPointer(presentCommandBuffer)) {
+			MetalNativeBridge.INSTANCE.metallum_release_object(presentedDrawable);
+			throw new IllegalStateException("Failed to create Metal present command buffer");
+		}
+
+		MetalNativeBridge.INSTANCE.MTLCommandBuffer_presentDrawable(presentCommandBuffer, presentedDrawable);
+		MetalNativeBridge.INSTANCE.MTLCommandBuffer_commit(presentCommandBuffer);
+		MetalNativeBridge.INSTANCE.metallum_release_object(presentCommandBuffer);
+		MetalNativeBridge.INSTANCE.metallum_release_object(presentedDrawable);
 	}
 
 	@Override
 	public void close() {
+		if (!MetalProbe.isNullPointer(this.drawable)) {
+			MetalNativeBridge.INSTANCE.metallum_release_object(this.drawable);
+			this.drawable = null;
+		}
 	}
 
 	@Override
-	public Collection<GpuSurface.PresentMode> supportedPresentModes() {
+	public @NonNull Collection<GpuSurface.PresentMode> supportedPresentModes() {
 		return SUPPORTED_PRESENT_MODES;
-	}
-
-	long windowHandle() {
-		return this.windowHandle;
-	}
-
-	MetalCocoaBootstrap.BootstrapContext bootstrap() {
-		return this.bootstrap;
 	}
 }

@@ -32,39 +32,47 @@ final class MetalNativeBridge {
 	private final MethodHandle createSystemDefaultDevice;
 	private final MethodHandle setDebugLabelsEnabled;
 	private final MethodHandle createCommandQueue;
-	private final MethodHandle acquireNextDrawable;
-	private final MethodHandle enqueuePresentTextureToLayer;
-	private final MethodHandle presentPendingDrawable;
+	private final MethodHandle MTLCommandQueueMakeCommandBuffer;
+	private final MethodHandle MTLCommandBufferCommit;
+	private final MethodHandle MTLCommandBufferIsCompleted;
+	private final MethodHandle MTLCommandBufferWaitUntilCompleted;
+	private final MethodHandle MTLCommandBufferMakeBlitCommandEncoder;
+	private final MethodHandle MTLCommandEncoderEndEncoding;
+	private final MethodHandle MTLBlitCommandEncoderCopyFromBufferToBuffer;
+	private final MethodHandle MTLBlitCommandEncoderCopyFromBufferToTexture;
+	private final MethodHandle MTLBlitCommandEncoderCopyFromTextureToTexture;
+	private final MethodHandle MTLBlitCommandEncoderCopyFromTextureToBuffer;
+	private final MethodHandle MTLDeviceMakeDepthStencilState;
+	private final MethodHandle MTLCommandBufferMakeRenderCommandEncoder;
+	private final MethodHandle MTLRenderCommandEncoderSetRenderPipelineState;
+	private final MethodHandle MTLRenderCommandEncoderSetDepthStencilState;
+	private final MethodHandle MTLRenderCommandEncoderSetDepthBias;
+	private final MethodHandle MTLRenderCommandEncoderSetFrontFacingWinding;
+	private final MethodHandle MTLRenderCommandEncoderSetCullMode;
+	private final MethodHandle MTLRenderCommandEncoderSetTriangleFillMode;
+	private final MethodHandle MTLRenderCommandEncoderSetVertexBuffer;
+	private final MethodHandle MTLRenderCommandEncoderSetFragmentBuffer;
+	private final MethodHandle MTLRenderCommandEncoderSetVertexTexture;
+	private final MethodHandle MTLRenderCommandEncoderSetFragmentTexture;
+	private final MethodHandle MTLRenderCommandEncoderSetVertexSamplerState;
+	private final MethodHandle MTLRenderCommandEncoderSetFragmentSamplerState;
+	private final MethodHandle MTLRenderCommandEncoderSetScissorRect;
+	private final MethodHandle MTLRenderCommandEncoderDrawPrimitives;
+	private final MethodHandle MTLRenderCommandEncoderDrawIndexedPrimitives;
+	private final MethodHandle MTLRenderCommandEncoderDrawPrimitivesTriangleFan;
+	private final MethodHandle MTLRenderCommandEncoderDrawIndexedPrimitivesTriangleFan;
+	private final MethodHandle MTLCommandBufferClearColorDepthTexturesRegion;
+	private final MethodHandle CAMetalLayerNextDrawable;
+	private final MethodHandle MTLCommandBufferEncodePresentTextureToDrawable;
+	private final MethodHandle MTLCommandBufferPresentDrawable;
 	private final MethodHandle createBuffer;
-	private final MethodHandle copyBufferToBuffer;
 	private final MethodHandle createTexture2d;
 	private final MethodHandle createTextureView;
 	private final MethodHandle createBufferTextureView;
-	private final MethodHandle copyBufferToTexture;
-	private final MethodHandle copyTextureToTexture;
-	private final MethodHandle copyTextureToBuffer;
 	private final MethodHandle createSampler;
-	private final MethodHandle beginRenderPass;
 	private final MethodHandle createRenderPipeline;
-	private final MethodHandle renderPassSetPipeline;
-	private final MethodHandle renderPassSetDepthStencilState;
-	private final MethodHandle renderPassSetRasterState;
-	private final MethodHandle renderPassSetVertexBuffer;
-	private final MethodHandle renderPassSetBufferBinding;
-	private final MethodHandle renderPassSetTextureBinding;
-	private final MethodHandle renderPassSetScissor;
-	private final MethodHandle renderPassDrawIndexed;
-	private final MethodHandle renderPassDrawIndexedTriangleFan;
-	private final MethodHandle renderPassDraw;
-	private final MethodHandle renderPassDrawTriangleFan;
-	private final MethodHandle endRenderPass;
 	private final MethodHandle configureLayer;
-	private final MethodHandle signalSubmit;
-	private final MethodHandle waitForSubmitCompletion;
 	private final MethodHandle releaseObject;
-	private final MethodHandle waitForCommandQueueIdle;
-	private final MethodHandle clearTexture;
-	private final MethodHandle clearColorDepthTexturesRegion;
 	private final MethodHandle getBufferContents;
 
 	private MetalNativeBridge(final Arena libraryArena, final SymbolLookup lookup) {
@@ -72,45 +80,36 @@ final class MetalNativeBridge {
 		this.createSystemDefaultDevice = downcall(lookup, "metallum_create_system_default_device", FunctionDescriptor.of(ValueLayout.ADDRESS));
 		this.setDebugLabelsEnabled = downcall(lookup, "metallum_set_debug_labels_enabled", FunctionDescriptor.ofVoid(INT));
 		this.createCommandQueue = downcall(lookup, "metallum_create_command_queue", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-		this.acquireNextDrawable = downcall(lookup, "metallum_acquire_next_drawable", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-		this.enqueuePresentTextureToLayer = downcall(lookup, "metallum_enqueue_present_texture_to_layer", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-		this.presentPendingDrawable = downcall(lookup, "metallum_present_pending_drawable", FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
-		this.createBuffer = downcall(lookup, "metallum_create_buffer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, ValueLayout.ADDRESS));
-		this.copyBufferToBuffer = downcall(lookup, "metallum_copy_buffer_to_buffer", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG));
-		this.createTexture2d = downcall(
+		this.MTLCommandQueueMakeCommandBuffer = downcall(lookup, "metallum_MTLCommandQueue_makeCommandBuffer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.MTLCommandBufferCommit = downcall(lookup, "metallum_MTLCommandBuffer_commit", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS));
+		this.MTLCommandBufferIsCompleted = downcall(lookup, "metallum_MTLCommandBuffer_isCompleted", FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
+		this.MTLCommandBufferWaitUntilCompleted = downcall(lookup, "metallum_MTLCommandBuffer_waitUntilCompleted", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG));
+		this.MTLCommandBufferMakeBlitCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeBlitCommandEncoder", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.MTLCommandEncoderEndEncoding = downcall(lookup, "metallum_MTLCommandEncoder_endEncoding", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS));
+		this.MTLBlitCommandEncoderCopyFromBufferToBuffer = downcall(
 			lookup,
-			"metallum_create_texture_2d",
-			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, ValueLayout.ADDRESS)
+			"metallum_MTLBlitCommandEncoder_copyFromBufferToBuffer",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG)
 		);
-		this.createTextureView = downcall(lookup, "metallum_create_texture_view", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
-		this.createBufferTextureView = downcall(
+		this.MTLBlitCommandEncoderCopyFromBufferToTexture = downcall(
 			lookup,
-			"metallum_create_buffer_texture_view",
-			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG)
+			"metallum_MTLBlitCommandEncoder_copyFromBufferToTexture",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
 		);
-		this.copyBufferToTexture = downcall(
+		this.MTLBlitCommandEncoderCopyFromTextureToTexture = downcall(
 			lookup,
-			"metallum_copy_buffer_to_texture",
-			FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
+			"metallum_MTLBlitCommandEncoder_copyFromTextureToTexture",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
 		);
-		this.copyTextureToTexture = downcall(
+		this.MTLBlitCommandEncoderCopyFromTextureToBuffer = downcall(
 			lookup,
-			"metallum_copy_texture_to_texture",
-			FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
+			"metallum_MTLBlitCommandEncoder_copyFromTextureToBuffer",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
 		);
-		this.copyTextureToBuffer = downcall(
+		this.MTLDeviceMakeDepthStencilState = downcall(lookup, "metallum_MTLDevice_makeDepthStencilState", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
+		this.MTLCommandBufferMakeRenderCommandEncoder = downcall(
 			lookup,
-			"metallum_copy_texture_to_buffer",
-			FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
-		);
-		this.createSampler = downcall(
-			lookup,
-			"metallum_create_sampler",
-			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, INT, DOUBLE)
-		);
-		this.beginRenderPass = downcall(
-			lookup,
-			"metallum_begin_render_pass",
+			"metallum_MTLCommandBuffer_makeRenderCommandEncoder",
 			FunctionDescriptor.of(
 				ValueLayout.ADDRESS,
 				ValueLayout.ADDRESS,
@@ -127,6 +126,77 @@ final class MetalNativeBridge {
 				INT,
 				DOUBLE
 			)
+		);
+		this.MTLRenderCommandEncoderSetRenderPipelineState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setRenderPipelineState", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.MTLRenderCommandEncoderSetDepthStencilState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthStencilState", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.MTLRenderCommandEncoderSetDepthBias = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthBias", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, DOUBLE, DOUBLE, DOUBLE));
+		this.MTLRenderCommandEncoderSetFrontFacingWinding = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFrontFacingWinding", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, INT));
+		this.MTLRenderCommandEncoderSetCullMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setCullMode", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, LONG));
+		this.MTLRenderCommandEncoderSetTriangleFillMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTriangleFillMode", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, INT));
+		this.MTLRenderCommandEncoderSetVertexBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexBuffer", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
+		this.MTLRenderCommandEncoderSetFragmentBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentBuffer", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
+		this.MTLRenderCommandEncoderSetVertexTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexTexture", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+		this.MTLRenderCommandEncoderSetFragmentTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentTexture", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+		this.MTLRenderCommandEncoderSetVertexSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexSamplerState", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+		this.MTLRenderCommandEncoderSetFragmentSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentSamplerState", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+		this.MTLRenderCommandEncoderSetScissorRect = downcall(lookup, "metallum_MTLRenderCommandEncoder_setScissorRect", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+		this.MTLRenderCommandEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+		this.MTLRenderCommandEncoderDrawIndexedPrimitives = downcall(
+			lookup,
+			"metallum_MTLRenderCommandEncoder_drawIndexedPrimitives",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, LONG, LONG, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG)
+		);
+		this.MTLRenderCommandEncoderDrawPrimitivesTriangleFan = downcall(
+			lookup,
+			"metallum_MTLRenderCommandEncoder_drawPrimitivesTriangleFan",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG)
+		);
+		this.MTLRenderCommandEncoderDrawIndexedPrimitivesTriangleFan = downcall(
+			lookup,
+			"metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG)
+		);
+		this.MTLCommandBufferClearColorDepthTexturesRegion = downcall(
+			lookup,
+			"metallum_MTLCommandBuffer_clearColorDepthTexturesRegion",
+			FunctionDescriptor.ofVoid(
+				ValueLayout.ADDRESS,
+				ValueLayout.ADDRESS,
+				FLOAT,
+				FLOAT,
+				FLOAT,
+				FLOAT,
+				ValueLayout.ADDRESS,
+				DOUBLE,
+				INT,
+				INT,
+				INT,
+				INT
+			)
+		);
+		this.CAMetalLayerNextDrawable = downcall(lookup, "metallum_CAMetalLayer_nextDrawable", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.MTLCommandBufferEncodePresentTextureToDrawable = downcall(
+			lookup,
+			"metallum_MTLCommandBuffer_encodePresentTextureToDrawable",
+			FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+		);
+		this.MTLCommandBufferPresentDrawable = downcall(lookup, "metallum_MTLCommandBuffer_presentDrawable", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+		this.createBuffer = downcall(lookup, "metallum_create_buffer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, ValueLayout.ADDRESS));
+		this.createTexture2d = downcall(
+			lookup,
+			"metallum_create_texture_2d",
+			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, ValueLayout.ADDRESS)
+		);
+		this.createTextureView = downcall(lookup, "metallum_create_texture_view", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
+		this.createBufferTextureView = downcall(
+			lookup,
+			"metallum_create_buffer_texture_view",
+			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG)
+		);
+		this.createSampler = downcall(
+			lookup,
+			"metallum_create_sampler",
+			FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, INT, DOUBLE)
 		);
 		this.createRenderPipeline = downcall(
 			lookup,
@@ -159,51 +229,8 @@ final class MetalNativeBridge {
 				LONG
 			)
 		);
-		this.renderPassSetPipeline = downcall(lookup, "metallum_render_pass_set_pipeline", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-		this.renderPassSetDepthStencilState = downcall(
-			lookup,
-			"metallum_render_pass_set_depth_stencil_state",
-			FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, INT, DOUBLE, DOUBLE)
-		);
-		this.renderPassSetRasterState = downcall(lookup, "metallum_render_pass_set_raster_state", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, INT, INT));
-		this.renderPassSetVertexBuffer = downcall(lookup, "metallum_render_pass_set_vertex_buffer", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG));
-		this.renderPassSetBufferBinding = downcall(lookup, "metallum_render_pass_set_buffer_binding", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, INT));
-		this.renderPassSetTextureBinding = downcall(lookup, "metallum_render_pass_set_texture_binding", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT));
-		this.renderPassSetScissor = downcall(lookup, "metallum_render_pass_set_scissor", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, INT, INT, INT, INT, INT));
-		this.renderPassDrawIndexed = downcall(lookup, "metallum_render_pass_draw_indexed", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG));
-		this.renderPassDrawIndexedTriangleFan = downcall(lookup, "metallum_render_pass_draw_indexed_triangle_fan", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG));
-		this.renderPassDraw = downcall(lookup, "metallum_render_pass_draw", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
-		this.renderPassDrawTriangleFan = downcall(lookup, "metallum_render_pass_draw_triangle_fan", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG));
-		this.endRenderPass = downcall(lookup, "metallum_end_render_pass", FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
-		this.configureLayer = downcall(lookup, "metallum_configure_layer", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, DOUBLE, DOUBLE, INT));
-		this.signalSubmit = downcall(lookup, "metallum_signal_submit", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG));
-		this.waitForSubmitCompletion = downcall(lookup, "metallum_wait_for_submit_completion", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG, LONG));
+		this.configureLayer = downcall(lookup, "metallum_configure_layer", FunctionDescriptor.ofVoid( ValueLayout.ADDRESS, DOUBLE, DOUBLE, INT));
 		this.releaseObject = downcall(lookup, "metallum_release_object", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-		this.waitForCommandQueueIdle = downcall(lookup, "metallum_wait_for_command_queue_idle", FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
-		this.clearTexture = downcall(
-			lookup,
-			"metallum_clear_texture",
-			FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, FLOAT, FLOAT, FLOAT, FLOAT, INT, DOUBLE)
-		);
-		this.clearColorDepthTexturesRegion = downcall(
-			lookup,
-			"metallum_clear_color_depth_textures_region",
-			FunctionDescriptor.of(
-				INT,
-				ValueLayout.ADDRESS,
-				ValueLayout.ADDRESS,
-				FLOAT,
-				FLOAT,
-				FLOAT,
-				FLOAT,
-				ValueLayout.ADDRESS,
-				DOUBLE,
-				INT,
-				INT,
-				INT,
-				INT
-			)
-		);
 		this.getBufferContents = downcall(lookup, "metallum_get_buffer_contents", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 	}
 
@@ -254,16 +281,56 @@ final class MetalNativeBridge {
 		}
 	}
 
-	Pointer metallum_create_buffer(final Pointer device, final long length, final long options, final String label) {
+	Pointer MTLCommandQueue_makeCommandBuffer(final Pointer commandQueue, final String label) {
 		try (Arena arena = Arena.ofConfined()) {
-			return toPointer((MemorySegment)this.createBuffer.invokeExact(toSegment(device), length, options, toCString(arena, label)));
+			return toPointer((MemorySegment)this.MTLCommandQueueMakeCommandBuffer.invokeExact(toSegment(commandQueue), toCString(arena, label)));
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_create_buffer", throwable);
+			throw bridgeFailure("metallum_MTLCommandQueue_makeCommandBuffer", throwable);
 		}
 	}
 
-	int metallum_copy_buffer_to_buffer(
-		final Pointer commandQueue,
+	void MTLCommandBuffer_commit(final Pointer commandBuffer) {
+		try {
+			this.MTLCommandBufferCommit.invokeExact(toSegment(commandBuffer));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandBuffer_commit", throwable);
+		}
+	}
+
+	int MTLCommandBuffer_isCompleted(final Pointer commandBuffer) {
+		try {
+			return (int)this.MTLCommandBufferIsCompleted.invokeExact(toSegment(commandBuffer));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandBuffer_isCompleted", throwable);
+		}
+	}
+
+	int MTLCommandBuffer_waitUntilCompleted(final Pointer commandBuffer, final long timeoutMs) {
+		try {
+			return (int)this.MTLCommandBufferWaitUntilCompleted.invokeExact(toSegment(commandBuffer), timeoutMs);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandBuffer_waitUntilCompleted", throwable);
+		}
+	}
+
+	Pointer MTLCommandBuffer_makeBlitCommandEncoder(final Pointer commandBuffer, final String label) {
+		try (Arena arena = Arena.ofConfined()) {
+			return toPointer((MemorySegment)this.MTLCommandBufferMakeBlitCommandEncoder.invokeExact(toSegment(commandBuffer), toCString(arena, label)));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandBuffer_makeBlitCommandEncoder", throwable);
+		}
+	}
+
+	void MTLCommandEncoder_endEncoding(final Pointer encoder) {
+		try {
+			this.MTLCommandEncoderEndEncoding.invokeExact(toSegment(encoder));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandEncoder_endEncoding", throwable);
+		}
+	}
+
+	void MTLBlitCommandEncoder_copyFromBufferToBuffer(
+		final Pointer blitEncoder,
 		final Pointer sourceBuffer,
 		final long sourceOffset,
 		final Pointer destinationBuffer,
@@ -271,8 +338,8 @@ final class MetalNativeBridge {
 		final long length
 	) {
 		try {
-			return (int)this.copyBufferToBuffer.invokeExact(
-				toSegment(commandQueue),
+			this.MTLBlitCommandEncoderCopyFromBufferToBuffer.invokeExact(
+				toSegment(blitEncoder),
 				toSegment(sourceBuffer),
 				sourceOffset,
 				toSegment(destinationBuffer),
@@ -280,7 +347,113 @@ final class MetalNativeBridge {
 				length
 			);
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_copy_buffer_to_buffer", throwable);
+			throw bridgeFailure("metallum_MTLBlitCommandEncoder_copyFromBufferToBuffer", throwable);
+		}
+	}
+
+	void MTLBlitCommandEncoder_copyFromBufferToTexture(
+		final Pointer blitEncoder,
+		final Pointer sourceBuffer,
+		final long sourceOffset,
+		final Pointer texture,
+		final long mipLevel,
+		final long slice,
+		final long x,
+		final long y,
+		final long width,
+		final long height,
+		final long bytesPerRow,
+		final long bytesPerImage
+	) {
+		try {
+			this.MTLBlitCommandEncoderCopyFromBufferToTexture.invokeExact(
+				toSegment(blitEncoder),
+				toSegment(sourceBuffer),
+				sourceOffset,
+				toSegment(texture),
+				mipLevel,
+				slice,
+				x,
+				y,
+				width,
+				height,
+				bytesPerRow,
+				bytesPerImage
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLBlitCommandEncoder_copyFromBufferToTexture", throwable);
+		}
+	}
+
+	void MTLBlitCommandEncoder_copyFromTextureToTexture(
+		final Pointer blitEncoder,
+		final Pointer sourceTexture,
+		final Pointer destinationTexture,
+		final long mipLevel,
+		final long sourceX,
+		final long sourceY,
+		final long destX,
+		final long destY,
+		final long width,
+		final long height
+	) {
+		try {
+			this.MTLBlitCommandEncoderCopyFromTextureToTexture.invokeExact(
+				toSegment(blitEncoder),
+				toSegment(sourceTexture),
+				toSegment(destinationTexture),
+				mipLevel,
+				sourceX,
+				sourceY,
+				destX,
+				destY,
+				width,
+				height
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLBlitCommandEncoder_copyFromTextureToTexture", throwable);
+		}
+	}
+
+	void MTLBlitCommandEncoder_copyFromTextureToBuffer(
+		final Pointer blitEncoder,
+		final Pointer sourceTexture,
+		final Pointer destinationBuffer,
+		final long destinationOffset,
+		final long mipLevel,
+		final long slice,
+		final long x,
+		final long y,
+		final long width,
+		final long height,
+		final long bytesPerRow,
+		final long bytesPerImage
+	) {
+		try {
+			this.MTLBlitCommandEncoderCopyFromTextureToBuffer.invokeExact(
+				toSegment(blitEncoder),
+				toSegment(sourceTexture),
+				toSegment(destinationBuffer),
+				destinationOffset,
+				mipLevel,
+				slice,
+				x,
+				y,
+				width,
+				height,
+				bytesPerRow,
+				bytesPerImage
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLBlitCommandEncoder_copyFromTextureToBuffer", throwable);
+		}
+	}
+
+	Pointer metallum_create_buffer(final Pointer device, final long length, final long options, final String label) {
+		try (Arena arena = Arena.ofConfined()) {
+			return toPointer((MemorySegment)this.createBuffer.invokeExact(toSegment(device), length, options, toCString(arena, label)));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_create_buffer", throwable);
 		}
 	}
 
@@ -337,104 +510,6 @@ final class MetalNativeBridge {
 		}
 	}
 
-	int metallum_copy_buffer_to_texture(
-		final Pointer commandQueue,
-		final Pointer sourceBuffer,
-		final long sourceOffset,
-		final Pointer texture,
-		final long mipLevel,
-		final long slice,
-		final long x,
-		final long y,
-		final long width,
-		final long height,
-		final long bytesPerRow,
-		final long bytesPerImage
-	) {
-		try {
-			return (int)this.copyBufferToTexture.invokeExact(
-				toSegment(commandQueue),
-				toSegment(sourceBuffer),
-				sourceOffset,
-				toSegment(texture),
-				mipLevel,
-				slice,
-				x,
-				y,
-				width,
-				height,
-				bytesPerRow,
-				bytesPerImage
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_copy_buffer_to_texture", throwable);
-		}
-	}
-
-	int metallum_copy_texture_to_texture(
-		final Pointer commandQueue,
-		final Pointer sourceTexture,
-		final Pointer destinationTexture,
-		final long mipLevel,
-		final long sourceX,
-		final long sourceY,
-		final long destX,
-		final long destY,
-		final long width,
-		final long height
-	) {
-		try {
-			return (int)this.copyTextureToTexture.invokeExact(
-				toSegment(commandQueue),
-				toSegment(sourceTexture),
-				toSegment(destinationTexture),
-				mipLevel,
-				sourceX,
-				sourceY,
-				destX,
-				destY,
-				width,
-				height
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_copy_texture_to_texture", throwable);
-		}
-	}
-
-	int metallum_copy_texture_to_buffer(
-		final Pointer commandQueue,
-		final Pointer sourceTexture,
-		final Pointer destinationBuffer,
-		final long destinationOffset,
-		final long mipLevel,
-		final long slice,
-		final long x,
-		final long y,
-		final long width,
-		final long height,
-		final long bytesPerRow,
-		final long bytesPerImage
-	) {
-		try {
-			return (int)this.copyTextureToBuffer.invokeExact(
-				toSegment(commandQueue),
-				toSegment(sourceTexture),
-				toSegment(destinationBuffer),
-				destinationOffset,
-				mipLevel,
-				slice,
-				x,
-				y,
-				width,
-				height,
-				bytesPerRow,
-				bytesPerImage
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_copy_texture_to_buffer", throwable);
-		}
-	}
-
 	Pointer metallum_create_sampler(
 		final Pointer device,
 		final long addressModeU,
@@ -461,8 +536,16 @@ final class MetalNativeBridge {
 		}
 	}
 
-	Pointer metallum_begin_render_pass(
-		final Pointer commandQueue,
+	Pointer MTLDevice_makeDepthStencilState(final Pointer device, final long depthCompareOp, final int writeDepth) {
+		try {
+			return toPointer((MemorySegment)this.MTLDeviceMakeDepthStencilState.invokeExact(toSegment(device), depthCompareOp, writeDepth));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLDevice_makeDepthStencilState", throwable);
+		}
+	}
+
+	Pointer MTLCommandBuffer_makeRenderCommandEncoder(
+		final Pointer commandBuffer,
 		final Pointer colorTexture,
 		final Pointer depthTexture,
 		final double viewportWidth,
@@ -477,8 +560,8 @@ final class MetalNativeBridge {
 		final String label
 	) {
 		try (Arena arena = Arena.ofConfined()) {
-			return toPointer((MemorySegment)this.beginRenderPass.invokeExact(
-				toSegment(commandQueue),
+			return toPointer((MemorySegment)this.MTLCommandBufferMakeRenderCommandEncoder.invokeExact(
+				toSegment(commandBuffer),
 				toSegment(colorTexture),
 				toSegment(depthTexture),
 				toCString(arena, label),
@@ -493,7 +576,231 @@ final class MetalNativeBridge {
 				clearDepth
 			));
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_begin_render_pass", throwable);
+			throw bridgeFailure("metallum_MTLCommandBuffer_makeRenderCommandEncoder", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setRenderPipelineState(final Pointer encoder, final Pointer pipeline) {
+		try {
+			this.MTLRenderCommandEncoderSetRenderPipelineState.invokeExact(toSegment(encoder), toSegment(pipeline));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setRenderPipelineState", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setDepthStencilState(final Pointer encoder, final Pointer depthStencilState) {
+		try {
+			this.MTLRenderCommandEncoderSetDepthStencilState.invokeExact(toSegment(encoder), toSegment(depthStencilState));
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setDepthStencilState", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setDepthBias(final Pointer encoder, final double depthBias, final double slopeScale, final double clamp) {
+		try {
+			this.MTLRenderCommandEncoderSetDepthBias.invokeExact(toSegment(encoder), depthBias, slopeScale, clamp);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setDepthBias", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setFrontFacingWinding(final Pointer encoder, final int clockwise) {
+		try {
+			this.MTLRenderCommandEncoderSetFrontFacingWinding.invokeExact(toSegment(encoder), clockwise);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFrontFacingWinding", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setCullMode(final Pointer encoder, final long cullMode) {
+		try {
+			this.MTLRenderCommandEncoderSetCullMode.invokeExact(toSegment(encoder), cullMode);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setCullMode", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setTriangleFillMode(final Pointer encoder, final int lines) {
+		try {
+			this.MTLRenderCommandEncoderSetTriangleFillMode.invokeExact(toSegment(encoder), lines);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setTriangleFillMode", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setVertexBuffer(final Pointer encoder, final Pointer buffer, final long offset, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetVertexBuffer.invokeExact(toSegment(encoder), toSegment(buffer), offset, index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexBuffer", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setFragmentBuffer(final Pointer encoder, final Pointer buffer, final long offset, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetFragmentBuffer.invokeExact(toSegment(encoder), toSegment(buffer), offset, index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentBuffer", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setVertexTexture(final Pointer encoder, final Pointer texture, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetVertexTexture.invokeExact(toSegment(encoder), toSegment(texture), index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexTexture", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setFragmentTexture(final Pointer encoder, final Pointer texture, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetFragmentTexture.invokeExact(toSegment(encoder), toSegment(texture), index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentTexture", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setVertexSamplerState(final Pointer encoder, final Pointer sampler, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetVertexSamplerState.invokeExact(toSegment(encoder), toSegment(sampler), index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexSamplerState", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setFragmentSamplerState(final Pointer encoder, final Pointer sampler, final long index) {
+		try {
+			this.MTLRenderCommandEncoderSetFragmentSamplerState.invokeExact(toSegment(encoder), toSegment(sampler), index);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentSamplerState", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_setScissorRect(final Pointer encoder, final long x, final long y, final long width, final long height) {
+		try {
+			this.MTLRenderCommandEncoderSetScissorRect.invokeExact(toSegment(encoder), x, y, width, height);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_setScissorRect", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_drawPrimitives(
+		final Pointer encoder,
+		final long primitiveType,
+		final long firstVertex,
+		final long vertexCount,
+		final long instanceCount
+	) {
+		try {
+			this.MTLRenderCommandEncoderDrawPrimitives.invokeExact(toSegment(encoder), primitiveType, firstVertex, vertexCount, instanceCount);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawPrimitives", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_drawIndexedPrimitives(
+		final Pointer encoder,
+		final long primitiveType,
+		final long indexCount,
+		final long indexType,
+		final Pointer indexBuffer,
+		final long indexBufferOffset,
+		final long instanceCount,
+		final long baseVertex
+	) {
+		try {
+			this.MTLRenderCommandEncoderDrawIndexedPrimitives.invokeExact(
+				toSegment(encoder),
+				primitiveType,
+				indexCount,
+				indexType,
+				toSegment(indexBuffer),
+				indexBufferOffset,
+				instanceCount,
+				baseVertex
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawIndexedPrimitives", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_drawPrimitivesTriangleFan(
+		final Pointer encoder,
+		final Pointer fanIndexBuffer,
+		final long firstVertex,
+		final long vertexCount,
+		final long instanceCount
+	) {
+		try {
+			this.MTLRenderCommandEncoderDrawPrimitivesTriangleFan.invokeExact(
+				toSegment(encoder),
+				toSegment(fanIndexBuffer),
+				firstVertex,
+				vertexCount,
+				instanceCount
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawPrimitivesTriangleFan", throwable);
+		}
+	}
+
+	void MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(
+		final Pointer encoder,
+		final Pointer indexBuffer,
+		final Pointer fanIndexBuffer,
+		final long indexType,
+		final long indexBufferOffset,
+		final long indexCount,
+		final long baseVertex,
+		final long instanceCount
+	) {
+		try {
+			this.MTLRenderCommandEncoderDrawIndexedPrimitivesTriangleFan.invokeExact(
+				toSegment(encoder),
+				toSegment(indexBuffer),
+				toSegment(fanIndexBuffer),
+				indexType,
+				indexBufferOffset,
+				indexCount,
+				baseVertex,
+				instanceCount
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan", throwable);
+		}
+	}
+
+	void MTLCommandBuffer_clearColorDepthTexturesRegion(
+		final Pointer commandBuffer,
+		final Pointer colorTexture,
+		final float clearColorRed,
+		final float clearColorGreen,
+		final float clearColorBlue,
+		final float clearColorAlpha,
+		final Pointer depthTexture,
+		final double clearDepth,
+		final int x,
+		final int y,
+		final int width,
+		final int height
+	) {
+		try {
+			this.MTLCommandBufferClearColorDepthTexturesRegion.invokeExact(
+				toSegment(commandBuffer),
+				toSegment(colorTexture),
+				clearColorRed,
+				clearColorGreen,
+				clearColorBlue,
+				clearColorAlpha,
+				toSegment(depthTexture),
+				clearDepth,
+				x,
+				y,
+				width,
+				height
+			);
+		} catch (Throwable throwable) {
+			throw bridgeFailure("metallum_MTLCommandBuffer_clearColorDepthTexturesRegion", throwable);
 		}
 	}
 
@@ -555,233 +862,35 @@ final class MetalNativeBridge {
 		}
 	}
 
-	int metallum_render_pass_set_pipeline(final Pointer renderPass, final Pointer pipeline) {
+	void metallum_configure_layer(final Pointer layer, final double width, final double height, final int immediatePresentMode) {
 		try {
-			return (int)this.renderPassSetPipeline.invokeExact(toSegment(renderPass), toSegment(pipeline));
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_pipeline", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_depth_stencil_state(
-		final Pointer renderPass,
-		final long depthCompareOp,
-		final int writeDepth,
-		final double depthBiasScaleFactor,
-		final double depthBiasConstant
-	) {
-		try {
-			return (int)this.renderPassSetDepthStencilState.invokeExact(
-				toSegment(renderPass),
-				depthCompareOp,
-				writeDepth,
-				depthBiasScaleFactor,
-				depthBiasConstant
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_depth_stencil_state", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_raster_state(final Pointer renderPass, final int cullBackFaces, final int wireframe) {
-		try {
-			return (int)this.renderPassSetRasterState.invokeExact(toSegment(renderPass), cullBackFaces, wireframe);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_raster_state", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_vertex_buffer(final Pointer renderPass, final long slot, final Pointer buffer, final long offset) {
-		try {
-			return (int)this.renderPassSetVertexBuffer.invokeExact(toSegment(renderPass), slot, toSegment(buffer), offset);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_vertex_buffer", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_buffer_binding(final Pointer renderPass, final long binding, final Pointer buffer, final long offset, final int stageMask) {
-		try {
-			return (int)this.renderPassSetBufferBinding.invokeExact(toSegment(renderPass), binding, toSegment(buffer), offset, stageMask);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_buffer_binding", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_texture_binding(
-		final Pointer renderPass,
-		final long binding,
-		final Pointer texture,
-		final Pointer sampler,
-		final int stageMask
-	) {
-		try {
-			return (int)this.renderPassSetTextureBinding.invokeExact(
-				toSegment(renderPass),
-				binding,
-				toSegment(texture),
-				toSegment(sampler),
-				stageMask
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_texture_binding", throwable);
-		}
-	}
-
-	int metallum_render_pass_set_scissor(
-		final Pointer renderPass,
-		final int scissorEnabled,
-		final int scissorX,
-		final int scissorY,
-		final int scissorWidth,
-		final int scissorHeight
-	) {
-		try {
-			return (int)this.renderPassSetScissor.invokeExact(
-				toSegment(renderPass),
-				scissorEnabled,
-				scissorX,
-				scissorY,
-				scissorWidth,
-				scissorHeight
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_set_scissor", throwable);
-		}
-	}
-
-	int metallum_render_pass_draw_indexed(
-		final Pointer renderPass,
-		final Pointer indexBuffer,
-		final long indexType,
-		final long primitiveType,
-		final long indexOffsetBytes,
-		final long indexCount,
-		final long baseVertex,
-		final long instanceCount
-	) {
-		try {
-			return (int)this.renderPassDrawIndexed.invokeExact(
-				renderPassSegment(renderPass),
-				toSegment(indexBuffer),
-				indexType,
-				primitiveType,
-				indexOffsetBytes,
-				indexCount,
-				baseVertex,
-				instanceCount
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_draw_indexed", throwable);
-		}
-	}
-
-	int metallum_render_pass_draw_indexed_triangle_fan(
-		final Pointer renderPass,
-		final Pointer indexBuffer,
-		final Pointer fanIndexBuffer,
-		final long indexType,
-		final long indexOffsetBytes,
-		final long indexCount,
-		final long baseVertex,
-		final long instanceCount
-	) {
-		try {
-			return (int)this.renderPassDrawIndexedTriangleFan.invokeExact(
-				renderPassSegment(renderPass),
-				toSegment(indexBuffer),
-				toSegment(fanIndexBuffer),
-				indexType,
-				indexOffsetBytes,
-				indexCount,
-				baseVertex,
-				instanceCount
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_draw_indexed_triangle_fan", throwable);
-		}
-	}
-
-	int metallum_render_pass_draw(
-		final Pointer renderPass,
-		final long primitiveType,
-		final long firstVertex,
-		final long vertexCount,
-		final long instanceCount
-	) {
-		try {
-			return (int)this.renderPassDraw.invokeExact(renderPassSegment(renderPass), primitiveType, firstVertex, vertexCount, instanceCount);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_draw", throwable);
-		}
-	}
-
-	int metallum_render_pass_draw_triangle_fan(
-		final Pointer renderPass,
-		final Pointer fanIndexBuffer,
-		final long firstVertex,
-		final long vertexCount,
-		final long instanceCount
-	) {
-		try {
-			return (int)this.renderPassDrawTriangleFan.invokeExact(renderPassSegment(renderPass), toSegment(fanIndexBuffer), firstVertex, vertexCount, instanceCount);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_render_pass_draw_triangle_fan", throwable);
-		}
-	}
-
-	int metallum_end_render_pass(final Pointer renderPass) {
-		try {
-			return (int)this.endRenderPass.invokeExact(renderPassSegment(renderPass));
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_end_render_pass", throwable);
-		}
-	}
-
-	int metallum_configure_layer(final Pointer layer, final double width, final double height, final int immediatePresentMode) {
-		try {
-			return (int)this.configureLayer.invokeExact(toSegment(layer), width, height, immediatePresentMode);
+			this.configureLayer.invokeExact(toSegment(layer), width, height, immediatePresentMode);
 		} catch (Throwable throwable) {
 			throw bridgeFailure("metallum_configure_layer", throwable);
 		}
 	}
 
-	int metallum_acquire_next_drawable(final Pointer commandQueue, final Pointer layer) {
+	Pointer CAMetalLayer_nextDrawable(final Pointer layer) {
 		try {
-			return (int)this.acquireNextDrawable.invokeExact(toSegment(commandQueue), toSegment(layer));
+			return toPointer((MemorySegment)this.CAMetalLayerNextDrawable.invokeExact(toSegment(layer)));
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_acquire_next_drawable", throwable);
+			throw bridgeFailure("metallum_CAMetalLayer_nextDrawable", throwable);
 		}
 	}
 
-	int metallum_enqueue_present_texture_to_layer(final Pointer commandQueue, final Pointer layer, final Pointer sourceTexture) {
+	void MTLCommandBuffer_encodePresentTextureToDrawable(final Pointer commandBuffer, final Pointer drawable, final Pointer sourceTexture) {
 		try {
-			return (int)this.enqueuePresentTextureToLayer.invokeExact(toSegment(commandQueue), toSegment(layer), toSegment(sourceTexture));
+			this.MTLCommandBufferEncodePresentTextureToDrawable.invokeExact(toSegment(commandBuffer), toSegment(drawable), toSegment(sourceTexture));
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_enqueue_present_texture_to_layer", throwable);
+			throw bridgeFailure("metallum_MTLCommandBuffer_encodePresentTextureToDrawable", throwable);
 		}
 	}
 
-	int metallum_present_pending_drawable(final Pointer commandQueue) {
+	void MTLCommandBuffer_presentDrawable(final Pointer commandBuffer, final Pointer drawable) {
 		try {
-			return (int)this.presentPendingDrawable.invokeExact(toSegment(commandQueue));
+			this.MTLCommandBufferPresentDrawable.invokeExact(toSegment(commandBuffer), toSegment(drawable));
 		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_present_pending_drawable", throwable);
-		}
-	}
-
-	int metallum_signal_submit(final Pointer commandQueue, final long submitIndex) {
-		try {
-			return (int)this.signalSubmit.invokeExact(toSegment(commandQueue), submitIndex);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_signal_submit", throwable);
-		}
-	}
-
-	int metallum_wait_for_submit_completion(final Pointer commandQueue, final long submitIndex, final long timeoutMs) {
-		try {
-			return (int)this.waitForSubmitCompletion.invokeExact(toSegment(commandQueue), submitIndex, timeoutMs);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_wait_for_submit_completion", throwable);
+			throw bridgeFailure("metallum_MTLCommandBuffer_presentDrawable", throwable);
 		}
 	}
 
@@ -790,76 +899,6 @@ final class MetalNativeBridge {
 			this.releaseObject.invokeExact(toSegment(object));
 		} catch (Throwable throwable) {
 			throw bridgeFailure("metallum_release_object", throwable);
-		}
-	}
-
-	int metallum_wait_for_command_queue_idle(final Pointer commandQueue) {
-		try {
-			return (int)this.waitForCommandQueueIdle.invokeExact(toSegment(commandQueue));
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_wait_for_command_queue_idle", throwable);
-		}
-	}
-
-	int metallum_clear_texture(
-		final Pointer commandQueue,
-		final Pointer texture,
-		final int clearColorEnabled,
-		final float clearColorRed,
-		final float clearColorGreen,
-		final float clearColorBlue,
-		final float clearColorAlpha,
-		final int clearDepthEnabled,
-		final double clearDepth
-	) {
-		try {
-			return (int)this.clearTexture.invokeExact(
-				toSegment(commandQueue),
-				toSegment(texture),
-				clearColorEnabled,
-				clearColorRed,
-				clearColorGreen,
-				clearColorBlue,
-				clearColorAlpha,
-				clearDepthEnabled,
-				clearDepth
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_clear_texture", throwable);
-		}
-	}
-
-	int metallum_clear_color_depth_textures_region(
-		final Pointer commandQueue,
-		final Pointer colorTexture,
-		final float clearColorRed,
-		final float clearColorGreen,
-		final float clearColorBlue,
-		final float clearColorAlpha,
-		final Pointer depthTexture,
-		final double clearDepth,
-		final int x,
-		final int y,
-		final int width,
-		final int height
-	) {
-		try {
-			return (int)this.clearColorDepthTexturesRegion.invokeExact(
-				toSegment(commandQueue),
-				toSegment(colorTexture),
-				clearColorRed,
-				clearColorGreen,
-				clearColorBlue,
-				clearColorAlpha,
-				toSegment(depthTexture),
-				clearDepth,
-				x,
-				y,
-				width,
-				height
-			);
-		} catch (Throwable throwable) {
-			throw bridgeFailure("metallum_clear_color_depth_textures_region", throwable);
 		}
 	}
 

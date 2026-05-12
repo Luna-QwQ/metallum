@@ -211,8 +211,7 @@ final class MetalDevice implements GpuDeviceBackend {
 	}
 
 	void waitForSubmittedGpuWork() {
-		this.commandEncoder.submitRenderPass();
-		this.nativeApi.metallum_wait_for_command_queue_idle(this.commandQueue);
+		this.commandEncoder.waitForSubmittedGpuWork();
 	}
 
 	void queueResourceRelease(final Pointer handle) {
@@ -261,8 +260,8 @@ final class MetalDevice implements GpuDeviceBackend {
 			true,
 			"Metal",
 			1.0F,
-			new DeviceLimits(16, 256, 16384, 1),
-			new DeviceFeatures(true),
+			new DeviceLimits(16, 256, 16384, 1L << 30, 1),
+			new DeviceFeatures(false, false, false, false, true),
 			underlyingExtensions,
 			new HintsAndWorkarounds(false, false),
 			type

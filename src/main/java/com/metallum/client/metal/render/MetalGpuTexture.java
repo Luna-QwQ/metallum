@@ -3,7 +3,6 @@ package com.metallum.client.metal.render;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.sun.jna.Pointer;
-import java.nio.ByteBuffer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.Nullable;
@@ -11,7 +10,6 @@ import org.jspecify.annotations.Nullable;
 @Environment(EnvType.CLIENT)
 final class MetalGpuTexture extends GpuTexture {
 	private final MetalDevice device;
-	private final int[] mipOffsets;
 	private final long mtlPixelFormat;
 	private boolean closed;
 	private int views = 1;
@@ -30,20 +28,9 @@ final class MetalGpuTexture extends GpuTexture {
 	) {
 		super(usage, label, format, width, height, depthOrLayers, mipLevels);
 		this.device = device;
-		this.mipOffsets = new int[mipLevels];
-		long totalSize = 0L;
-
-		for (int mipLevel = 0; mipLevel < mipLevels; mipLevel++) {
-			this.mipOffsets[mipLevel] = Math.toIntExact(totalSize);
-			totalSize += this.layerSizeBytes(mipLevel) * (long)depthOrLayers;
-		}
-
-		if (totalSize > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException("Metal texture stub only supports textures up to 2 GiB");
-		}
 
 		this.mtlPixelFormat = toMtlPixelFormat(format, usage);
-		long storageMode = toMtlStorageMode(usage, format);
+		long storageMode = 2L;
 		this.nativeHandle = MetalNativeBridge.INSTANCE.metallum_create_texture_2d(
 			device.metalDevicePointer(),
 			this.mtlPixelFormat,
@@ -60,34 +47,6 @@ final class MetalGpuTexture extends GpuTexture {
 
 	int pixelSize() {
 		return this.getFormat().pixelSize();
-	}
-
-	int mipWidth(final int mipLevel) {
-		return Math.max(1, this.getWidth(mipLevel));
-	}
-
-	int mipHeight(final int mipLevel) {
-		return Math.max(1, this.getHeight(mipLevel));
-	}
-
-	int layerSizeBytes(final int mipLevel) {
-		return this.mipWidth(mipLevel) * this.mipHeight(mipLevel) * this.pixelSize();
-	}
-
-	int pixelOffset(final int mipLevel, final int depthOrLayer, final int x, final int y) {
-		return this.mipOffsets[mipLevel] + depthOrLayer * this.layerSizeBytes(mipLevel) + (y * this.mipWidth(mipLevel) + x) * this.pixelSize();
-	}
-
-	ByteBuffer sliceStorage(final int byteOffset, final int byteLength) {
-		throw new IllegalStateException("Metal textures are GPU-only and do not expose CPU storage");
-	}
-
-	ByteBuffer fullStorageView() {
-		throw new IllegalStateException("Metal textures are GPU-only and do not expose CPU storage");
-	}
-
-	boolean hasCpuStorage() {
-		return false;
 	}
 
 	Pointer nativeHandle() {
@@ -211,9 +170,5 @@ final class MetalGpuTexture extends GpuTexture {
 			result |= 1L; // Render targets are sampled in presentation/composite paths.
 		}
 		return result == 0L ? 1L : result;
-	}
-
-	private static long toMtlStorageMode(@GpuTexture.Usage final int usage, final GpuFormat format) {
-		return 2L; // MTLStorageModePrivate. CPU writes go through staging buffers on the command queue.
 	}
 }
