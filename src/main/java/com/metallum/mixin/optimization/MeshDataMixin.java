@@ -10,16 +10,16 @@ import org.spongepowered.asm.mixin.Unique;
 @Environment(EnvType.CLIENT)
 @Mixin(MeshData.class)
 public abstract class MeshDataMixin implements MetalTerrainFaceCulling.MeshDataSegments {
-	@Unique
-	private MetalTerrainFaceCulling.FaceSegments metallum$terrainFaceSegments;
+    @Unique
+    private MetalTerrainFaceCulling.FaceSegments metallum$terrainFaceSegments;
 
-	@Override
-	public MetalTerrainFaceCulling.FaceSegments metallum$getTerrainFaceSegments() {
-		return this.metallum$terrainFaceSegments;
-	}
+    @Override
+    public MetalTerrainFaceCulling.FaceSegments metallum$getTerrainFaceSegments() {
+        return this.metallum$terrainFaceSegments;
+    }
 
-	@Override
-	public void metallum$setTerrainFaceSegments(final MetalTerrainFaceCulling.FaceSegments segments) {
-		this.metallum$terrainFaceSegments = segments;
-	}
+    @Override
+    public void metallum$setTerrainFaceSegments(final MetalTerrainFaceCulling.FaceSegments segments) {
+        this.metallum$terrainFaceSegments = segments;
+    }
 }

@@ -1,27 +1,13 @@
 package com.metallum.client.metal.render;
 
-import com.metallum.Metallum;
+import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.buffers.GpuFence;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.CommandEncoderBackend;
-import com.mojang.blaze3d.systems.GpuQueryPool;
-import com.mojang.blaze3d.systems.RenderPass;
-import com.mojang.blaze3d.systems.RenderPassBackend;
-import com.mojang.blaze3d.systems.RenderPassDescriptor;
+import com.mojang.blaze3d.systems.*;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.sun.jna.Pointer;
-
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.IdentityHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalDouble;
-
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.joml.Vector4fc;
@@ -29,28 +15,27 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 
+import java.lang.foreign.MemorySegment;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.*;
+
 @Environment(EnvType.CLIENT)
 final class MetalCommandEncoder implements CommandEncoderBackend {
     public static final int MAX_SUBMITS_IN_FLIGHT = 2;
     private final MetalDevice device;
     private long currentSubmitIndex = 2L;
     private long completedSubmitIndex = 0L;
-    private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT);
-    private static final org.slf4j.Logger LOGGER = Metallum.LOGGER;
+    private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT + 1);
     private final Map<MetalGpuTexture, PendingTextureClear> pendingTextureClears = new IdentityHashMap<>();
-    private final Map<Long, Pointer> inFlightCommandBuffers = new java.util.HashMap<>();
+    private final Map<Long, MemorySegment> inFlightCommandBuffers = new java.util.HashMap<>();
     @Nullable
     private MetalRenderPass currentRenderPass;
-    @Nullable
-    private Pointer commandBuffer;
-    @Nullable
-    private Pointer blitEncoder;
-    @Nullable
-    private Pointer renderEncoder;
-    @Nullable
-    private Pointer renderColorAttachment;
-    @Nullable
-    private Pointer renderDepthAttachment;
+    private MemorySegment commandBuffer = MemorySegment.NULL;
+    private MemorySegment blitEncoder = MemorySegment.NULL;
+    private MemorySegment renderEncoder = MemorySegment.NULL;
+    private MemorySegment renderColorAttachment = MemorySegment.NULL;
+    private MemorySegment renderDepthAttachment = MemorySegment.NULL;
 
     record ClearColor(float red, float green, float blue, float alpha) {
         static final ClearColor TRANSPARENT = new ClearColor(0.0F, 0.0F, 0.0F, 0.0F);
@@ -64,28 +49,20 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         this.device = device;
     }
 
-    Pointer commandBuffer() {
-        if (!MetalProbe.isNullPointer(this.commandBuffer)) {
-            return this.commandBuffer;
+    MemorySegment commandBuffer() {
+        if (!MetalProbe.isNullHandle(commandBuffer)) {
+            return commandBuffer;
         }
-        Pointer created = MetalNativeBridge.INSTANCE.MTLCommandQueue_makeCommandBuffer(
-                this.device.commandQueue(),
-                this.device.useLabels() ? "Metallum frame " + this.currentSubmitIndex : null
+        commandBuffer = device.commandQueue.makeCommandBuffer(
+                device.useLabels() ? "Metallum frame " + currentSubmitIndex : null
         );
-        if (MetalProbe.isNullPointer(created)) {
-            throw new IllegalStateException("Failed to create MTLCommandBuffer");
-        }
-        this.commandBuffer = created;
-        return created;
+        return commandBuffer;
     }
 
-    Pointer blitCommandEncoder(final String label) {
+    MemorySegment blitCommandEncoder() {
         this.endRenderEncoder();
-        Pointer encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeBlitCommandEncoder(
-                this.commandBuffer(),
-                this.device.useLabels() ? label : null
-        );
-        if (MetalProbe.isNullPointer(encoder)) {
+        MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeBlitCommandEncoder(this.commandBuffer());
+        if (MetalProbe.isNullHandle(encoder)) {
             throw new IllegalStateException("Failed to create MTLBlitCommandEncoder");
         }
         this.blitEncoder = encoder;
@@ -93,18 +70,17 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     }
 
     void endBlitEncoder() {
-        if (MetalProbe.isNullPointer(this.blitEncoder)) {
+        if (MetalProbe.isNullHandle(this.blitEncoder)) {
             return;
         }
         MetalNativeBridge.INSTANCE.MTLCommandEncoder_endEncoding(this.blitEncoder);
-        Pointer encoder = this.blitEncoder;
-        this.blitEncoder = null;
-        MetalNativeBridge.INSTANCE.metallum_release_object(encoder);
+        MetalNativeBridge.INSTANCE.metallum_release_object(this.blitEncoder);
+        this.blitEncoder = MemorySegment.NULL;
     }
 
     @Override
     public void submit() {
-        if (MetalProbe.isNullPointer(this.commandBuffer)) {
+        if (MetalProbe.isNullHandle(this.commandBuffer)) {
             return;
         }
 
@@ -115,37 +91,36 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             throw new IllegalStateException("5s timeout reached when waiting for Metal submit completion");
         }
 
-        Pointer submittedCommandBuffer = this.commandBuffer();
+        MemorySegment submittedCommandBuffer = this.commandBuffer();
         MetalNativeBridge.INSTANCE.MTLCommandBuffer_commit(submittedCommandBuffer);
         this.inFlightCommandBuffers.put(this.currentSubmitIndex, submittedCommandBuffer);
-        this.commandBuffer = null;
+        this.commandBuffer = MemorySegment.NULL;
         this.currentSubmitIndex++;
         this.destroyQueue.rotate();
     }
 
-    Pointer renderCommandEncoder(
+    MemorySegment renderCommandEncoder(
             final MetalGpuTextureView colorTextureView,
             @Nullable final MetalGpuTextureView depthTextureView,
             final int viewportWidth,
             final int viewportHeight,
             final Optional<ClearColor> clearColor,
-            final OptionalDouble clearDepth,
-            @Nullable final String label
+            final OptionalDouble clearDepth
     ) {
         this.endBlitEncoder();
-        Pointer colorAttachment = colorTextureView.nativeHandle();
-        Pointer depthAttachment = depthTextureView == null ? null : depthTextureView.nativeHandle();
+        MemorySegment colorAttachment = colorTextureView.nativeHandle();
+        MemorySegment depthAttachment = depthTextureView == null ? MemorySegment.NULL : depthTextureView.nativeHandle();
         if (clearColor.isEmpty()
                 && clearDepth.isEmpty()
-                && !MetalProbe.isNullPointer(this.renderEncoder)
-                && MetalPipelineSupport.samePointer(this.renderColorAttachment, colorAttachment)
-                && MetalPipelineSupport.samePointer(this.renderDepthAttachment, depthAttachment)) {
+                && !MetalProbe.isNullHandle(this.renderEncoder)
+                && MetalPipelineSupport.sameHandle(this.renderColorAttachment, colorAttachment)
+                && MetalPipelineSupport.sameHandle(this.renderDepthAttachment, depthAttachment)) {
             return this.renderEncoder;
         }
 
         this.endRenderEncoder();
         ClearColor colorClear = clearColor.orElse(ClearColor.TRANSPARENT);
-        Pointer encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeRenderCommandEncoder(
+        MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeRenderCommandEncoder(
                 this.commandBuffer(),
                 colorAttachment,
                 depthAttachment,
@@ -157,10 +132,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 colorClear.blue(),
                 colorClear.alpha(),
                 clearDepth.isPresent() ? 1 : 0,
-                clearDepth.orElse(1.0),
-                label
+                clearDepth.orElse(1.0)
         );
-        if (MetalProbe.isNullPointer(encoder)) {
+        if (MetalProbe.isNullHandle(encoder)) {
             return null;
         }
         this.renderEncoder = encoder;
@@ -169,23 +143,15 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         return encoder;
     }
 
-    void finishRenderPass(final Pointer renderPass) {
-        if (MetalProbe.isNullPointer(renderPass) || MetalPipelineSupport.samePointer(renderPass, this.renderEncoder)) {
-            return;
-        }
-        MetalNativeBridge.INSTANCE.metallum_release_object(renderPass);
-    }
-
     void endRenderEncoder() {
-        if (MetalProbe.isNullPointer(this.renderEncoder)) {
+        if (MetalProbe.isNullHandle(this.renderEncoder)) {
             return;
         }
         MetalNativeBridge.INSTANCE.MTLCommandEncoder_endEncoding(this.renderEncoder);
-        Pointer encoder = this.renderEncoder;
-        this.renderEncoder = null;
-        this.renderColorAttachment = null;
-        this.renderDepthAttachment = null;
-        MetalNativeBridge.INSTANCE.metallum_release_object(encoder);
+        MetalNativeBridge.INSTANCE.metallum_release_object(this.renderEncoder);
+        this.renderEncoder = MemorySegment.NULL;
+        this.renderColorAttachment = MemorySegment.NULL;
+        this.renderDepthAttachment = MemorySegment.NULL;
     }
 
     @Override
@@ -207,7 +173,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         RenderPass.RenderArea renderArea = descriptor.renderArea != null
                 ? descriptor.renderArea
                 : new RenderPass.RenderArea(0, 0, colorTexture.getWidth(0), colorTexture.getHeight(0));
-        return this.currentRenderPass = new MetalRenderPass(
+        MetalRenderPass renderPass = new MetalRenderPass(
                 this.device,
                 this,
                 descriptor.label(),
@@ -217,12 +183,19 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 resolvedColorClear,
                 resolvedDepthClear
         );
+        this.currentRenderPass = renderPass;
+        renderPass.pushDebugGroup(descriptor.label());
+        return renderPass;
     }
 
     @Override
     public void submitRenderPass() {
         if (this.currentRenderPass != null) {
-            this.currentRenderPass.end();
+            try {
+                this.currentRenderPass.end();
+            } finally {
+                this.currentRenderPass.popDebugGroup();
+            }
         }
         this.currentRenderPass = null;
     }
@@ -290,8 +263,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuBuffer buffer = castBuffer(destination.buffer());
         int length = data.remaining();
 
-        try (MetalGpuBuffer stagingBuffer = this.createStagingBuffer(buffer.label() == null ? null : buffer.label() + " upload staging", data)) {
-            Pointer blit = this.blitCommandEncoder("copy buffer upload " + (buffer.label() == null ? "buffer" : buffer.label()));
+        try (MetalGpuBuffer stagingBuffer = this.createStagingBuffer(data)) {
+            MemorySegment blit = this.blitCommandEncoder();
             MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToBuffer(
                     blit,
                     stagingBuffer.nativeHandle(),
@@ -308,17 +281,16 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     @Override
     public void copyToBuffer(final GpuBufferSlice source, final GpuBufferSlice target) {
-        long copyLength = Math.min(source.length(), target.length());
         MetalGpuBuffer sourceBuffer = castBuffer(source.buffer());
         MetalGpuBuffer targetBuffer = castBuffer(target.buffer());
-        Pointer blit = this.blitCommandEncoder("copy buffer " + sourceBuffer.label() + " -> " + targetBuffer.label());
+        MemorySegment blit = this.blitCommandEncoder();
         MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToBuffer(
                 blit,
                 sourceBuffer.nativeHandle(),
                 source.offset(),
                 targetBuffer.nativeHandle(),
                 target.offset(),
-                copyLength
+                source.length()
         );
         this.endBlitEncoder();
     }
@@ -336,13 +308,13 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             final int sourceX,
             final int sourceY
     ) {
-        MetalGpuTexture texture = castTexture(destination);
-        int pixelSize = texture.pixelSize();
-        int sourceWidth = source.getWidth();
-        int sourceHeight = source.getHeight();
-        long sourceOffset = ((long) sourceX + (long) sourceY * sourceWidth) * pixelSize;
-        ByteBuffer sourceBytes = MemoryUtil.memByteBuffer(source.getPointer(), sourceWidth * sourceHeight * pixelSize);
-        this.writeToTexture(texture, sourceBytes, sourceOffset, mipLevel, depthOrLayer, destX, destY, width, height, sourceWidth, sourceHeight);
+        int stagingBufferSize = source.getWidth() * source.getHeight() * destination.getFormat().pixelSize();
+        int texelSize = destination.getFormat().pixelSize();
+        int skipTexels = sourceX + sourceY * source.getWidth();
+        long skipBytes = (long) skipTexels * texelSize;
+
+        ByteBuffer sourceBytes = MemoryUtil.memByteBuffer(source.getPointer(), stagingBufferSize);
+        this.writeToTexture((MetalGpuTexture) destination, sourceBytes, skipBytes, mipLevel, depthOrLayer, destX, destY, width, height, source.getWidth(), source.getHeight());
     }
 
     @Override
@@ -357,7 +329,47 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             final int width,
             final int height
     ) {
-        this.writeToTexture(castTexture(destination), source, 0L, mipLevel, depthOrLayer, destX, destY, width, height, width, height);
+        this.writeToTexture((MetalGpuTexture) destination, source, 0L, mipLevel, depthOrLayer, destX, destY, width, height, width, height);
+    }
+
+    private void writeToTexture(
+            final MetalGpuTexture destination,
+            final ByteBuffer source,
+            final long sourceOffset,
+            final int mipLevel,
+            final int depthOrLayer,
+            final int destX,
+            final int destY,
+            final int width,
+            final int height,
+            final int sourceWidth,
+            final int sourceHeight
+    ) {
+        this.flushPendingClear(destination);
+
+        int pixelSize = destination.pixelSize();
+        long bytesPerRow = (long) sourceWidth * pixelSize;
+        long bytesPerImage = bytesPerRow * sourceHeight;
+
+        try (MetalGpuBuffer stagingBuffer = this.createStagingBuffer(source)) {
+            MemorySegment blit = this.blitCommandEncoder();
+            MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToTexture(
+                    blit,
+                    stagingBuffer.nativeHandle(),
+                    sourceOffset,
+                    destination.nativeHandle(),
+                    mipLevel,
+                    depthOrLayer,
+                    destX,
+                    destY,
+                    width,
+                    height,
+                    bytesPerRow,
+                    bytesPerImage
+            );
+
+            this.endBlitEncoder();
+        }
     }
 
     @Override
@@ -384,7 +396,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         int rowBytes = width * bytesPerPixel;
         int bytesPerImage = rowBytes * height;
 
-        Pointer blit = this.blitCommandEncoder("copy texture " + texture.getLabel() + " -> buffer " + buffer.label());
+        MemorySegment blit = this.blitCommandEncoder();
         MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromTextureToBuffer(
                 blit,
                 texture.nativeHandle(),
@@ -420,7 +432,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuTexture dstTexture = castTexture(destination);
         this.flushPendingClear(srcTexture);
         this.flushPendingClear(dstTexture);
-        Pointer blit = this.blitCommandEncoder("copy texture " + srcTexture.getLabel() + " -> " + dstTexture.getLabel());
+        MemorySegment blit = this.blitCommandEncoder();
         MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromTextureToTexture(
                 blit,
                 srcTexture.nativeHandle(),
@@ -454,9 +466,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             throw new IllegalStateException("Cannot wait on a fence for the current submit");
         }
 
-        Pointer commandBuffer = this.inFlightCommandBuffers.get(submitIndex);
-        if (MetalProbe.isNullPointer(commandBuffer)) {
-            return false;
+        MemorySegment commandBuffer = this.inFlightCommandBuffers.get(submitIndex);
+        if (MetalProbe.isNullHandle(commandBuffer)) {
+            this.releaseCompletedCommandBuffers(submitIndex);
+            return true;
         }
 
         int result = MetalNativeBridge.INSTANCE.MTLCommandBuffer_isCompleted(commandBuffer);
@@ -471,19 +484,19 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         this.submitRenderPass();
         this.endBlitEncoder();
         this.endRenderEncoder();
-        for (Pointer commandBuffer : this.inFlightCommandBuffers.values()) {
+        for (MemorySegment commandBuffer : this.inFlightCommandBuffers.values()) {
             MetalNativeBridge.INSTANCE.metallum_release_object(commandBuffer);
         }
         this.inFlightCommandBuffers.clear();
-        if (!MetalProbe.isNullPointer(this.commandBuffer)) {
+        if (!MetalProbe.isNullHandle(this.commandBuffer)) {
             MetalNativeBridge.INSTANCE.metallum_release_object(this.commandBuffer);
-            this.commandBuffer = null;
+            this.commandBuffer = MemorySegment.NULL;
         }
         this.destroyQueue.close();
     }
 
     void waitForSubmittedGpuWork() {
-        if (!MetalProbe.isNullPointer(this.commandBuffer) || this.currentRenderPass != null || !MetalProbe.isNullPointer(this.blitEncoder)) {
+        if (!MetalProbe.isNullHandle(this.commandBuffer) || this.currentRenderPass != null || !MetalProbe.isNullHandle(this.blitEncoder)) {
             this.submit();
         } else {
             this.endRenderEncoder();
@@ -553,8 +566,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         state.depth = OptionalDouble.of(clearDepth);
     }
 
-    private int clearTexture(
-            final Pointer texture,
+    private void clearTexture(
+            final MemorySegment texture,
             final int clearColorEnabled,
             final float clearColorRed,
             final float clearColorGreen,
@@ -565,7 +578,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     ) {
         this.endBlitEncoder();
         this.endRenderEncoder();
-        Pointer encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeRenderCommandEncoder(
+        MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeRenderCommandEncoder(
                 this.commandBuffer(),
                 clearColorEnabled != 0 ? texture : null,
                 clearDepthEnabled != 0 ? texture : null,
@@ -577,15 +590,13 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 clearColorBlue,
                 clearColorAlpha,
                 clearDepthEnabled,
-                clearDepth,
-                this.device.useLabels() ? "clear texture" : null
+                clearDepth
         );
-        if (MetalProbe.isNullPointer(encoder)) {
-            return 1;
+        if (MetalProbe.isNullHandle(encoder)) {
+            return;
         }
         MetalNativeBridge.INSTANCE.MTLCommandEncoder_endEncoding(encoder);
         MetalNativeBridge.INSTANCE.metallum_release_object(encoder);
-        return 0;
     }
 
     private void flushPendingClear(final MetalGpuTexture texture) {
@@ -594,7 +605,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             return;
         }
         if (pending.color.isPresent()) {
-            int result = this.clearTexture(
+            this.clearTexture(
                     texture.nativeHandle(),
                     1,
                     pending.color.get().red(),
@@ -604,12 +615,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                     0,
                     1.0
             );
-            if (result != 0) {
-                LOGGER.warn("Failed to flush deferred Metal color clear '{}'", texture.getLabel());
-            }
         }
         if (pending.depth.isPresent()) {
-            int result = this.clearTexture(
+            this.clearTexture(
                     texture.nativeHandle(),
                     0,
                     0.0F,
@@ -619,9 +627,6 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                     1,
                     pending.depth.getAsDouble()
             );
-            if (result != 0) {
-                LOGGER.warn("Failed to flush deferred Metal depth clear '{}'", texture.getLabel());
-            }
         }
     }
 
@@ -700,12 +705,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         OptionalDouble depth = OptionalDouble.empty();
     }
 
-    private MetalGpuBuffer createStagingBuffer(@Nullable final String label, final ByteBuffer data) {
-        ByteBuffer source = data.duplicate();
+    private MetalGpuBuffer createStagingBuffer(final ByteBuffer source) {
         int length = source.remaining();
         MetalGpuBuffer stagingBuffer = new MetalGpuBuffer(
                 this.device,
-                label,
                 GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC,
                 length
         );
@@ -713,49 +716,5 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         staging.limit(length);
         staging.put(source);
         return stagingBuffer;
-    }
-
-    private void writeToTexture(
-            final MetalGpuTexture destination,
-            final ByteBuffer source,
-            final long sourceOffset,
-            final int mipLevel,
-            final int depthOrLayer,
-            final int destX,
-            final int destY,
-            final int width,
-            final int height,
-            final int sourceWidth,
-            final int sourceHeight
-    ) {
-        if (width <= 0 || height <= 0) {
-            return;
-        }
-        this.flushPendingClear(destination);
-
-        int pixelSize = destination.pixelSize();
-        long bytesPerRow = (long) sourceWidth * pixelSize;
-        long bytesPerImage = bytesPerRow * sourceHeight;
-
-        try (MetalGpuBuffer stagingBuffer = this.createStagingBuffer(destination.device().useLabels() ? destination.getLabel() + " texture upload staging" : null, source)) {
-            Pointer blit = this.blitCommandEncoder("copy buffer -> texture " + destination.getLabel());
-            MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToTexture(
-                    blit,
-                    stagingBuffer.nativeHandle(),
-                    sourceOffset,
-                    destination.nativeHandle(),
-                    mipLevel,
-                    depthOrLayer,
-                    destX,
-                    destY,
-                    width,
-                    height,
-                    bytesPerRow,
-                    bytesPerImage
-            );
-
-            this.endBlitEncoder();
-            this.queueForDestroy(stagingBuffer::close);
-        }
     }
 }

@@ -1,30 +1,30 @@
 {
-	"schemaVersion": 1,
-	"id": "metallum",
-	"version": "${version}",
-	"name": "Metallum",
-	"description": "This is an PoC Metal backend for Minecraft on macOS",
-	"authors": [
-		"kokodio"
-	],
-	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
-	},
-	"license": "CC0-1.0",
-	"icon": "assets/metallum/icon.png",
-	"environment": "*",
-	"entrypoints": {
-		"main": [
-			"com.metallum.Metallum"
-		]
-	},
-	"mixins": [
-		"metallum.mixins.json"
-	],
-	"depends": {
-		"fabricloader": ">=0.19.2",
-		"minecraft": "~26.2-",
-		"java": ">=25"
-	}
+  "schemaVersion": 1,
+  "id": "metallum",
+  "version": "${version}",
+  "name": "Metallum",
+  "description": "This is an PoC Metal backend for Minecraft on macOS",
+  "authors": [
+    "kokodio"
+  ],
+  "contact": {
+    "homepage": "https://fabricmc.net/",
+    "sources": "https://github.com/FabricMC/fabric-example-mod"
+  },
+  "license": "CC0-1.0",
+  "icon": "assets/metallum/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.metallum.Metallum"
+    ]
+  },
+  "mixins": [
+    "metallum.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.2",
+    "minecraft": "~26.2-",
+    "java": ">=25"
+  }
 }

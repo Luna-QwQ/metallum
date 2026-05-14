@@ -13,14 +13,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(SectionCompiler.class)
 public abstract class SectionCompilerMixin {
-	@Inject(method = "compile", at = @At("RETURN"))
-	private void metallum$packTerrainVertices(
-		final SectionPos sectionPos,
-		final RenderSectionRegion region,
-		final VertexSorting vertexSorting,
-		final SectionBufferBuilderPack sectionBufferBuilderPack,
-		final CallbackInfoReturnable<SectionCompiler.Results> cir
-	) {
-		MetalTerrainVertexPacking.optimize(cir.getReturnValue(), sectionBufferBuilderPack);
-	}
+    @Inject(method = "compile", at = @At("RETURN"))
+    private void metallum$packTerrainVertices(
+            final SectionPos sectionPos,
+            final RenderSectionRegion region,
+            final VertexSorting vertexSorting,
+            final SectionBufferBuilderPack sectionBufferBuilderPack,
+            final CallbackInfoReturnable<SectionCompiler.Results> cir
+    ) {
+        MetalTerrainVertexPacking.optimize(cir.getReturnValue(), sectionBufferBuilderPack);
+    }
 }

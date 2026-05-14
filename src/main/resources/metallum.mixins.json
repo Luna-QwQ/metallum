@@ -1,24 +1,24 @@
 {
-	"required": true,
-	"package": "com.metallum.mixin",
-	"compatibilityLevel": "JAVA_25",
-	"mixins": [
-	],
-	"client": [
-		"render.PreferredGraphicsApiMixin",
-		"optimization.CompiledSectionMeshMixin",
-		"optimization.SectionCompilerMixin",
-		"optimization.MeshDataMixin",
-		"optimization.RenderSectionMixin",
-		"optimization.SectionRenderDispatcherMixin",
-		"optimization.LevelRendererMixin",
-		"optimization.accessor.MeshDataAccessor",
-		"optimization.accessor.SectionCompilerResultsAccessor"
-	],
-	"injectors": {
-		"defaultRequire": 1
-	},
-	"overwrites": {
-		"requireAnnotations": true
-	}
+  "required": true,
+  "package": "com.metallum.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+  ],
+  "client": [
+    "optimization.CompiledSectionMeshMixin",
+    "optimization.LevelRendererMixin",
+    "optimization.MeshDataMixin",
+    "optimization.RenderSectionMixin",
+    "optimization.SectionCompilerMixin",
+    "optimization.SectionRenderDispatcherMixin",
+    "optimization.accessor.MeshDataAccessor",
+    "optimization.accessor.SectionCompilerResultsAccessor",
+    "render.PreferredGraphicsApiMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
 }

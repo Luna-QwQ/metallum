@@ -1,100 +1,79 @@
 package com.metallum.client.metal.render;
 
-import ca.weblite.objc.Client;
-import com.sun.jna.NativeLibrary;
-import com.sun.jna.Pointer;
+import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
-import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFWNativeCocoa;
+
+import java.lang.foreign.MemorySegment;
 
 @Environment(EnvType.CLIENT)
 public final class MetalCocoaBootstrap {
-	private static final String QUARTZ_CORE_FRAMEWORK = "/System/Library/Frameworks/QuartzCore.framework/QuartzCore";
-	private static final Client COERCING_CLIENT = Client.getInstance();
-	private static final Client RAW_CLIENT = Client.getRawClient();
+    private MetalCocoaBootstrap() {
+    }
 
-	private MetalCocoaBootstrap() {
-	}
+    public static BootstrapContext bootstrap(final long windowHandle) {
+        if (!MetalBackendConfig.isMacOs()) {
+            throw new IllegalStateException("Metal bootstrap is only available on macOS");
+        }
+        MemorySegment device = MetalProbe.createSystemDefaultDevice();
+        if (MetalProbe.isNullHandle(device)) {
+            throw new IllegalStateException("MTLCreateSystemDefaultDevice returned null during Cocoa bootstrap");
+        }
 
-	public static BootstrapContext bootstrap(final long windowHandle) {
-		if (!MetalBackendConfig.isMacOs()) {
-			throw new IllegalStateException("Metal bootstrap is only available on macOS");
-		}
+        MemorySegment cocoaWindow = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaWindow(windowHandle));
+        if (MetalProbe.isNullHandle(cocoaWindow)) {
+            throw new IllegalStateException("glfwGetCocoaWindow returned null");
+        }
 
-		NativeLibrary.getInstance(QUARTZ_CORE_FRAMEWORK);
+        MemorySegment cocoaView = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaView(windowHandle));
+        if (MetalProbe.isNullHandle(cocoaView)) {
+            throw new IllegalStateException("glfwGetCocoaView returned null");
+        }
 
-		Pointer device = MetalProbe.createSystemDefaultDevice();
-		if (MetalProbe.isNullPointer(device)) {
-			throw new IllegalStateException("MTLCreateSystemDefaultDevice returned null during Cocoa bootstrap");
-		}
+        double scale = readBackingScaleFactor(cocoaWindow);
+        MemorySegment metalLayer = MetalNativeBridge.INSTANCE.metallum_create_metal_layer(device, scale);
+        if (MetalProbe.isNullHandle(metalLayer)) {
+            throw new IllegalStateException("Failed to create CAMetalLayer");
+        }
 
-		Pointer cocoaWindow = pointerFromHandle(GLFWNativeCocoa.glfwGetCocoaWindow(windowHandle));
-		if (MetalProbe.isNullPointer(cocoaWindow)) {
-			throw new IllegalStateException("glfwGetCocoaWindow returned null");
-		}
+        MetalNativeBridge.INSTANCE.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
 
-		Pointer cocoaView = pointerFromHandle(GLFWNativeCocoa.glfwGetCocoaView(windowHandle));
-		if (MetalProbe.isNullPointer(cocoaView)) {
-			throw new IllegalStateException("glfwGetCocoaView returned null");
-		}
+        return new BootstrapContext(device, MetalProbe.readDeviceName(device), cocoaWindow, cocoaView, metalLayer, scale);
+    }
 
-		Pointer metalLayer = RAW_CLIENT.sendPointer("CAMetalLayer", "layer");
-		if (MetalProbe.isNullPointer(metalLayer)) {
-			throw new IllegalStateException("CAMetalLayer.layer returned null");
-		}
+    private static double readBackingScaleFactor(final MemorySegment cocoaWindow) {
+        double value = MetalNativeBridge.INSTANCE.metallum_NSWindow_backingScaleFactor(cocoaWindow);
+        return value > 0.0 ? value : 1.0;
+    }
 
-		double scale = readBackingScaleFactor(cocoaWindow);
-		COERCING_CLIENT.send(cocoaView, "setWantsLayer:", true);
-		RAW_CLIENT.send(cocoaView, "setLayer:", metalLayer);
-		RAW_CLIENT.send(metalLayer, "setDevice:", device);
-		COERCING_CLIENT.send(metalLayer, "setFramebufferOnly:", true);
-		COERCING_CLIENT.send(metalLayer, "setOpaque:", true);
-		COERCING_CLIENT.send(metalLayer, "setContentsScale:", scale);
+    @Environment(EnvType.CLIENT)
+    public record BootstrapContext(
+            MemorySegment device,
+            String deviceName,
+            MemorySegment cocoaWindow,
+            MemorySegment cocoaView,
+            MemorySegment metalLayer,
+            double backingScaleFactor
+    ) {
+        public String deviceHandleHex() {
+            return toHex(this.device);
+        }
 
-		return new BootstrapContext(device, MetalProbe.readDeviceName(device), cocoaWindow, cocoaView, metalLayer, scale);
-	}
+        public String cocoaWindowHandleHex() {
+            return toHex(this.cocoaWindow);
+        }
 
-	private static Pointer pointerFromHandle(final long handle) {
-		return handle == 0L ? null : new Pointer(handle);
-	}
+        public String cocoaViewHandleHex() {
+            return toHex(this.cocoaView);
+        }
 
-	private static double readBackingScaleFactor(final Pointer cocoaWindow) {
-		Object value = COERCING_CLIENT.send(cocoaWindow, "backingScaleFactor");
-		if (value instanceof Number number && number.doubleValue() > 0.0) {
-			return number.doubleValue();
-		}
+        public String metalLayerHandleHex() {
+            return toHex(this.metalLayer);
+        }
 
-		return 1.0;
-	}
-
-	@Environment(EnvType.CLIENT)
-	public record BootstrapContext(
-		Pointer device,
-		String deviceName,
-		Pointer cocoaWindow,
-		Pointer cocoaView,
-		Pointer metalLayer,
-		double backingScaleFactor
-	) {
-		public String devicePointerHex() {
-			return toHex(this.device);
-		}
-
-		public String cocoaWindowPointerHex() {
-			return toHex(this.cocoaWindow);
-		}
-
-		public String cocoaViewPointerHex() {
-			return toHex(this.cocoaView);
-		}
-
-		public String metalLayerPointerHex() {
-			return toHex(this.metalLayer);
-		}
-
-		private static String toHex(@Nullable final Pointer pointer) {
-			return MetalProbe.isNullPointer(pointer) ? "0x0" : "0x" + Long.toUnsignedString(Pointer.nativeValue(pointer), 16);
-		}
-	}
+        private static String toHex(final MemorySegment handle) {
+            return "0x" + Long.toUnsignedString(handle.address(), 16);
+        }
+    }
 }

@@ -15,11 +15,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Environment(EnvType.CLIENT)
 @Mixin(SectionRenderDispatcher.RenderSection.class)
 public abstract class RenderSectionMixin {
-	@Shadow
-	public abstract BlockPos getRenderOrigin();
+    @Shadow
+    public abstract BlockPos getRenderOrigin();
 
-	@Inject(method = "getSectionMesh", at = @At("RETURN"))
-	private void metallum$rememberTerrainFaceCullingOrigin(final CallbackInfoReturnable<SectionMesh> cir) {
-		MetalTerrainFaceCulling.rememberSectionOrigin(cir.getReturnValue(), this.getRenderOrigin());
-	}
+    @Inject(method = "getSectionMesh", at = @At("RETURN"))
+    private void metallum$rememberTerrainFaceCullingOrigin(final CallbackInfoReturnable<SectionMesh> cir) {
+        MetalTerrainFaceCulling.rememberSectionOrigin(cir.getReturnValue(), this.getRenderOrigin());
+    }
 }
