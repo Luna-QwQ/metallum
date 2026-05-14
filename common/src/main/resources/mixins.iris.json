@@ -54,6 +54,7 @@
     "MixinModelViewBobbing",
     "MixinOptions_Entrypoint",
     "MixinParticleEngine",
+    "MixinPreparedRenderType",
     "MixinShaderManager_Overrides",
     "MixinQuickPlayDev",
     "MixinRenderPass",

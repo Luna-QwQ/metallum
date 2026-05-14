@@ -1,12 +1,11 @@
 package net.irisshaders.iris.vertices.sodium.terrain;
 
+import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectMap;
 import it.unimi.dsi.fastutil.bytes.Byte2ObjectOpenHashMap;
-import net.caffeinemc.mods.sodium.client.gl.attribute.GlVertexFormat;
-import net.caffeinemc.mods.sodium.client.render.chunk.shader.ChunkShaderBindingPoints;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
-import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.impl.DefaultChunkMeshAttributes;
 
 public class FormatAnalyzer {
 	private static final Byte2ObjectMap<ChunkVertexType> classMap = new Byte2ObjectOpenHashMap<>();
@@ -67,22 +66,22 @@ public class FormatAnalyzer {
 			midBlockOffset = 0;
 		}
 
-		GlVertexFormat.Builder VERTEX_FORMAT = GlVertexFormat.builder(offset)
-			.addElement(DefaultChunkMeshAttributes.POSITION, ChunkShaderBindingPoints.ATTRIBUTE_POSITION, 0)
-			.addElement(DefaultChunkMeshAttributes.COLOR, ChunkShaderBindingPoints.ATTRIBUTE_COLOR, 8)
-			.addElement(DefaultChunkMeshAttributes.TEXTURE, ChunkShaderBindingPoints.ATTRIBUTE_TEXTURE, 12)
-			.addElement(DefaultChunkMeshAttributes.LIGHT_MATERIAL_INDEX, ChunkShaderBindingPoints.ATTRIBUTE_LIGHT_MATERIAL_INDEX, 16);
+		VertexFormat.Builder VERTEX_FORMAT = VertexFormat.builder(0)
+			.addAttribute("a_Position", GpuFormat.RG32_UINT)
+			.addAttribute("a_Color", GpuFormat.RGBA8_UNORM)
+			.addAttribute("a_TexCoord", GpuFormat.RG16_UINT)
+			.addAttribute("a_LightAndData", GpuFormat.RGBA8_UINT);
 
 		if (blockId) {
-			VERTEX_FORMAT.addElement(IrisChunkMeshAttributes.BLOCK_ID, 11, blockIdOffset);
+			VERTEX_FORMAT.addAttribute("a_blockID", GpuFormat.R32_UINT);
 		}
 
 		if (normal) {
-			VERTEX_FORMAT.addElement(IrisChunkMeshAttributes.NORMAL, 10, normalOffset);
+			VERTEX_FORMAT.addAttribute("a_Normal", GpuFormat.R32_UINT);
 		}
 
 		if (midUV) {
-			VERTEX_FORMAT.addElement(IrisChunkMeshAttributes.MID_TEX_COORD, 12, midUvOffset);
+			VERTEX_FORMAT.addAttribute("a_TexCoord");
 		}
 
 		if (midBlock) {
