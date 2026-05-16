@@ -1,6 +1,5 @@
 package com.metallum.client.metal.render.mtl;
 
-import com.metallum.client.metal.render.MetalProbe;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -17,7 +16,7 @@ public final class MTLCommandBuffer {
 
     public MTLBlitCommandEncoder makeBlitCommandEncoder() {
         MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeBlitCommandEncoder(handle());
-        if (MetalProbe.isNullHandle(encoder)) {
+        if (MetalNativeBridge.isNullHandle(encoder)) {
             throw new IllegalStateException("Failed to create MTLBlitCommandEncoder");
         }
         return new MTLBlitCommandEncoder(encoder);
@@ -50,7 +49,7 @@ public final class MTLCommandBuffer {
                 clearDepthEnabled,
                 clearDepth
         );
-        if (MetalProbe.isNullHandle(encoder)) {
+        if (MetalNativeBridge.isNullHandle(encoder)) {
             throw new IllegalStateException("Failed to create MTLRenderCommandEncoder");
         }
         return new MTLRenderCommandEncoder(encoder);
@@ -114,7 +113,7 @@ public final class MTLCommandBuffer {
     }
 
     public void close() {
-        if (MetalProbe.isNullHandle(handle)) {
+        if (MetalNativeBridge.isNullHandle(handle)) {
             return;
         }
         MetalNativeBridge.INSTANCE.metallum_release_object(handle);
@@ -122,7 +121,7 @@ public final class MTLCommandBuffer {
     }
 
     private MemorySegment handle() {
-        if (MetalProbe.isNullHandle(handle)) {
+        if (MetalNativeBridge.isNullHandle(handle)) {
             throw new IllegalStateException("MTLCommandBuffer is closed");
         }
         return handle;

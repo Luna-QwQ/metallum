@@ -19,14 +19,14 @@ import java.util.Set;
 final class MetalSurface implements GpuSurfaceBackend {
     private static final Set<GpuSurface.PresentMode> SUPPORTED_PRESENT_MODES = EnumSet.of(GpuSurface.PresentMode.FIFO, GpuSurface.PresentMode.MAILBOX);
     private final MetalDevice device;
-    private final MetalCocoaBootstrap.BootstrapContext bootstrap;
+    private final MemorySegment metalLayer;
     private GpuSurface.Configuration configuration;
     private MemorySegment drawable = MemorySegment.NULL;
     private MetalCommandEncoder pendingPresentEncoder;
 
-    MetalSurface(final long ignoredWindowHandle, final MetalDevice device, final MetalCocoaBootstrap.BootstrapContext bootstrap) {
+    MetalSurface(final MetalDevice device, final MemorySegment metalLayer) {
         this.device = device;
-        this.bootstrap = bootstrap;
+        this.metalLayer = metalLayer;
     }
 
     @Override
@@ -36,7 +36,7 @@ final class MetalSurface implements GpuSurfaceBackend {
         }
 
         MetalNativeBridge.INSTANCE.metallum_configure_layer(
-                this.bootstrap.metalLayer(),
+                this.metalLayer,
                 config.width(),
                 config.height(),
                 config.presentMode() == GpuSurface.PresentMode.MAILBOX ? 1 : 0
@@ -58,7 +58,7 @@ final class MetalSurface implements GpuSurfaceBackend {
         if (this.hasDrawable()) {
             throw new SurfaceException("Metal drawable is already acquired");
         }
-        this.drawable = MetalNativeBridge.INSTANCE.CAMetalLayer_nextDrawable(this.bootstrap.metalLayer());
+        this.drawable = MetalNativeBridge.INSTANCE.CAMetalLayer_nextDrawable(this.metalLayer);
         if (!this.hasDrawable()) {
             throw new SurfaceException("Failed to acquire Metal drawable");
         }
@@ -104,7 +104,7 @@ final class MetalSurface implements GpuSurfaceBackend {
     }
 
     private boolean hasDrawable() {
-        return !MetalProbe.isNullHandle(this.drawable);
+        return !MetalNativeBridge.isNullHandle(this.drawable);
     }
 
     @Override

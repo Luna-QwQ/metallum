@@ -1,6 +1,7 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.Metallum;
+import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.mojang.blaze3d.GLFWErrorCapture;
 import com.mojang.blaze3d.shaders.GpuDebugOptions;
 import com.mojang.blaze3d.shaders.ShaderSource;
@@ -11,11 +12,14 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.NonNull;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWNativeCocoa;
+
+import java.lang.foreign.MemorySegment;
 
 @Environment(EnvType.CLIENT)
 public class MetalBackend implements GpuBackend {
     @Override
-    public String getName() {
+    public @NonNull String getName() {
         return "Metal";
     }
 
@@ -32,32 +36,52 @@ public class MetalBackend implements GpuBackend {
     @Override
     public @NonNull GpuDevice createDevice(
             final long window, final @NonNull ShaderSource defaultShaderSource, final @NonNull GpuDebugOptions debugOptions, final @NonNull Runnable criticalShaderLoader
-    )
-            throws BackendCreationException {
-        MetalProbe.ProbeResult probe = MetalProbe.probe();
-        if (!probe.supported()) {
-            throw new BackendCreationException("Metal probe failed: " + probe.message(), BackendCreationException.Reason.OTHER);
+    ) throws BackendCreationException {
+        if (!MetalNativeBridge.isMacOs()) {
+            throw new BackendCreationException("Metal is only available on macOS", BackendCreationException.Reason.OTHER);
         }
 
-        MetalCocoaBootstrap.BootstrapContext bootstrap;
+        MemorySegment deviceHandle;
+        MemorySegment cocoaWindow;
+        MemorySegment cocoaView;
+        MemorySegment metalLayer;
+        String deviceName;
         try {
-            bootstrap = MetalCocoaBootstrap.bootstrap(window);
+            deviceHandle = MetalNativeBridge.INSTANCE.metallum_create_system_default_device();
+            if (MetalNativeBridge.isNullHandle(deviceHandle)) {
+                throw new IllegalStateException("MTLCreateSystemDefaultDevice returned null");
+            }
+
+            deviceName = MetalNativeBridge.INSTANCE.metallum_copy_device_name(deviceHandle);
+            if (deviceName.isBlank()) deviceName = "<unknown Metal device>";
+
+            cocoaWindow = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaWindow(window));
+            if (MetalNativeBridge.isNullHandle(cocoaWindow)) {
+                throw new IllegalStateException("glfwGetCocoaWindow returned null");
+            }
+
+            cocoaView = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaView(window));
+            if (MetalNativeBridge.isNullHandle(cocoaView)) {
+                throw new IllegalStateException("glfwGetCocoaView returned null");
+            }
+
+            double scale = MetalNativeBridge.INSTANCE.metallum_NSWindow_backingScaleFactor(cocoaWindow);
+            if (scale <= 0.0) scale = 1.0;
+
+            metalLayer = MetalNativeBridge.INSTANCE.metallum_create_metal_layer(deviceHandle, scale);
+            if (MetalNativeBridge.isNullHandle(metalLayer)) {
+                throw new IllegalStateException("Failed to create CAMetalLayer");
+            }
+
+            MetalNativeBridge.INSTANCE.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
         } catch (Throwable throwable) {
-            throw new BackendCreationException("Metal Cocoa bootstrap failed: " + throwable.getMessage(), BackendCreationException.Reason.OTHER);
+            throw new BackendCreationException("Metal bootstrap failed: " + throwable.getMessage(), BackendCreationException.Reason.OTHER);
         }
 
-        Metallum.LOGGER.info(
-                "Metal bootstrap prepared device {} ({}) with NSWindow {}, NSView {}, CAMetalLayer {}, scale {}",
-                bootstrap.deviceName(),
-                bootstrap.deviceHandleHex(),
-                bootstrap.cocoaWindowHandleHex(),
-                bootstrap.cocoaViewHandleHex(),
-                bootstrap.metalLayerHandleHex(),
-                bootstrap.backingScaleFactor()
-        );
+        Metallum.LOGGER.info("Metal device: {}", deviceName);
 
         try {
-            return new GpuDevice(new MetalDevice(defaultShaderSource, bootstrap, debugOptions), criticalShaderLoader);
+            return new GpuDevice(new MetalDevice(defaultShaderSource, debugOptions, deviceHandle, metalLayer, deviceName, cocoaView), criticalShaderLoader);
         } catch (Throwable throwable) {
             throw new BackendCreationException("Metal device initialization failed: " + throwable.getMessage(), BackendCreationException.Reason.OTHER);
         }

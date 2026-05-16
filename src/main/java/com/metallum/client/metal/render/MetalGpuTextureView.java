@@ -35,7 +35,7 @@ final class MetalGpuTextureView extends GpuTextureView {
                     this.baseMipLevel(),
                     this.mipLevels()
             );
-            if (MetalProbe.isNullHandle(viewHandle)) {
+            if (MetalNativeBridge.isNullHandle(viewHandle)) {
                 throw new IllegalStateException(
                         "Failed to create Metal texture view for mip range " + this.baseMipLevel() + "+" + this.mipLevels()
                 );

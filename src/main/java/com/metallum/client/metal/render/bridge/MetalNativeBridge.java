@@ -3,6 +3,8 @@ package com.metallum.client.metal.render.bridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
+import org.jspecify.annotations.Nullable;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.foreign.*;
@@ -11,6 +13,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 
 @Environment(EnvType.CLIENT)
 public final class MetalNativeBridge {
@@ -1004,6 +1007,15 @@ public final class MetalNativeBridge {
             segment.setAtIndex(LONG, i, values[i]);
         }
         return segment;
+    }
+
+    public static boolean isNullHandle(@Nullable final MemorySegment pointer) {
+        return pointer == null || pointer.address() == 0L;
+    }
+
+    public static boolean isMacOs() {
+        String osName = System.getProperty("os.name", "");
+        return osName.toLowerCase(Locale.ROOT).contains("mac");
     }
 
     private static RuntimeException bridgeFailure(final String symbol, final Throwable throwable) {

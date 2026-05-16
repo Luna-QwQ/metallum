@@ -217,7 +217,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 draw.uniformUploaderConsumer().accept(uniformArgument, this::setUniform);
             }
 
-            if (stateDirty || !dirtyDescriptors.isEmpty() || MetalProbe.isNullHandle(nativePipeline)) {
+            if (stateDirty || !dirtyDescriptors.isEmpty() || MetalNativeBridge.isNullHandle(nativePipeline)) {
                 bindDrawState(enc);
             }
             MetalGpuBuffer nativeIndexBuffer = resolveIndexBuffer();
@@ -391,14 +391,14 @@ final class MetalRenderPass implements RenderPassBackend {
         }
 
         boolean pipelineChanged = false;
-        if (MetalProbe.isNullHandle(nativePipeline)) {
+        if (MetalNativeBridge.isNullHandle(nativePipeline)) {
             MemorySegment pipelineHandle = compiledPipeline.getOrCreateNativePipeline(
                     device,
                     colorAttachmentFormat(),
                     depthAttachmentFormat(),
                     stencilAttachmentFormat()
             );
-            if (MetalProbe.isNullHandle(pipelineHandle)) {
+            if (MetalNativeBridge.isNullHandle(pipelineHandle)) {
                 throw new IllegalStateException("Native pipeline is unavailable");
             }
             enc.setRenderPipelineState(pipelineHandle);
@@ -410,7 +410,7 @@ final class MetalRenderPass implements RenderPassBackend {
                         compiledPipeline.depthCompareOp(),
                         compiledPipeline.depthWrite()
                 );
-                if (MetalProbe.isNullHandle(depthState)) {
+                if (MetalNativeBridge.isNullHandle(depthState)) {
                     throw new IllegalStateException("Native depth state is unavailable");
                 }
                 enc.setDepthStencilState(depthState);
@@ -573,7 +573,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 height,
                 bytesPerRow
         );
-        if (MetalProbe.isNullHandle(texelTexture)) {
+        if (MetalNativeBridge.isNullHandle(texelTexture)) {
             throw new IllegalStateException("Failed to create Metal texel buffer texture for " + binding.name());
         }
 

@@ -14,6 +14,7 @@ import com.mojang.blaze3d.systems.*;
 import com.mojang.blaze3d.textures.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
@@ -27,7 +28,9 @@ import java.util.function.Supplier;
 
 @Environment(EnvType.CLIENT)
 final class MetalDevice implements GpuDeviceBackend {
-    private final MetalCocoaBootstrap.BootstrapContext bootstrap;
+    private final MemorySegment metalDeviceHandle;
+    private final MemorySegment metalLayer;
+    private final MemorySegment cocoaView;
     private final GpuDebugOptions debugOptions;
     private final MetalCommandEncoder commandEncoder;
     private final DeviceInfo deviceInfo;
@@ -38,47 +41,52 @@ final class MetalDevice implements GpuDeviceBackend {
 
     MetalDevice(
             final ShaderSource defaultShaderSource,
-            final MetalCocoaBootstrap.BootstrapContext bootstrap,
-            final GpuDebugOptions debugOptions
+            final GpuDebugOptions debugOptions,
+            final MemorySegment metalDeviceHandle,
+            final MemorySegment metalLayer,
+            final String deviceName,
+            final MemorySegment cocoaView
     ) {
         this.activeShaderSource = defaultShaderSource;
-        this.bootstrap = bootstrap;
         this.debugOptions = debugOptions;
+        this.metalDeviceHandle = metalDeviceHandle;
+        this.metalLayer = metalLayer;
+        this.cocoaView = cocoaView;
         MetalNativeBridge.INSTANCE.metallum_set_debug_labels_enabled(this.useLabels());
-        this.commandQueue = MTLCommandQueue.create(bootstrap.device());
+        this.commandQueue = MTLCommandQueue.create(metalDeviceHandle);
         MetalTerrainVertexPacking.setEnabled(true); //todo config
         MetalTerrainFaceCulling.setEnabled(true);
         this.commandEncoder = new MetalCommandEncoder(this);
-        this.deviceInfo = buildDeviceInfo(bootstrap);
+        this.deviceInfo = buildDeviceInfo(deviceName);
     }
 
     @Override
-    public GpuSurfaceBackend createSurface(final long windowHandle) {
-        return new MetalSurface(windowHandle, this, this.bootstrap);
+    public @NonNull GpuSurfaceBackend createSurface(final long windowHandle) {
+        return new MetalSurface(this, this.metalLayer);
     }
 
     @Override
-    public MetalCommandEncoder createCommandEncoder() {
+    public @NonNull MetalCommandEncoder createCommandEncoder() {
         return this.commandEncoder;
     }
 
     @Override
-    public GpuSampler createSampler(
-            final AddressMode addressModeU,
-            final AddressMode addressModeV,
-            final FilterMode minFilter,
-            final FilterMode magFilter,
+    public @NonNull GpuSampler createSampler(
+            final @NonNull AddressMode addressModeU,
+            final @NonNull AddressMode addressModeV,
+            final @NonNull FilterMode minFilter,
+            final @NonNull FilterMode magFilter,
             final int maxAnisotropy,
-            final OptionalDouble maxLod
+            final @NonNull OptionalDouble maxLod
     ) {
         return new MetalGpuSampler(this, addressModeU, addressModeV, minFilter, magFilter, maxAnisotropy, maxLod);
     }
 
     @Override
-    public GpuTexture createTexture(
+    public @NonNull GpuTexture createTexture(
             @Nullable final Supplier<String> label,
             @GpuTexture.Usage final int usage,
-            final GpuFormat format,
+            final @NonNull GpuFormat format,
             final int width,
             final int height,
             final int depthOrLayers,
@@ -88,10 +96,10 @@ final class MetalDevice implements GpuDeviceBackend {
     }
 
     @Override
-    public GpuTexture createTexture(
+    public @NonNull GpuTexture createTexture(
             @Nullable final String label,
             @GpuTexture.Usage final int usage,
-            final GpuFormat format,
+            final @NonNull GpuFormat format,
             final int width,
             final int height,
             final int depthOrLayers,
@@ -101,29 +109,29 @@ final class MetalDevice implements GpuDeviceBackend {
     }
 
     @Override
-    public GpuTextureView createTextureView(final GpuTexture texture) {
+    public @NonNull GpuTextureView createTextureView(final @NonNull GpuTexture texture) {
         return this.createTextureView(texture, 0, texture.getMipLevels());
     }
 
     @Override
-    public GpuTextureView createTextureView(final GpuTexture texture, final int baseMipLevel, final int mipLevels) {
+    public @NonNull GpuTextureView createTextureView(final @NonNull GpuTexture texture, final int baseMipLevel, final int mipLevels) {
         return new MetalGpuTextureView(texture, baseMipLevel, mipLevels);
     }
 
     @Override
-    public GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final long size) {
+    public @NonNull GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final long size) {
         return new MetalGpuBuffer(this, usage, size);
     }
 
     @Override
-    public GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final ByteBuffer data) {
+    public @NonNull GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final ByteBuffer data) {
         MetalGpuBuffer buffer = (MetalGpuBuffer) this.createBuffer(label, usage | GpuBuffer.USAGE_COPY_DST, data.remaining());
         this.commandEncoder.writeToBuffer(buffer.slice(), data.duplicate());
         return buffer;
     }
 
     @Override
-    public List<String> getLastDebugMessages() {
+    public @NonNull List<String> getLastDebugMessages() {
         return List.of();
     }
 
@@ -137,7 +145,7 @@ final class MetalDevice implements GpuDeviceBackend {
     }
 
     @Override
-    public CompiledRenderPipeline precompilePipeline(final RenderPipeline pipeline, @Nullable final ShaderSource shaderSource) {
+    public @NonNull CompiledRenderPipeline precompilePipeline(final @NonNull RenderPipeline pipeline, @Nullable final ShaderSource shaderSource) {
         ShaderSource effectiveSource = shaderSource == null ? this.activeShaderSource : shaderSource;
         if (shaderSource != null) {
             this.activeShaderSource = shaderSource;
@@ -158,17 +166,17 @@ final class MetalDevice implements GpuDeviceBackend {
         this.commandEncoder.close();
         this.bufferPool.close();
         try {
-            MetalNativeBridge.INSTANCE.metallum_NSView_clearLayer(this.bootstrap.cocoaView());
+            MetalNativeBridge.INSTANCE.metallum_NSView_clearLayer(this.cocoaView);
         } catch (Throwable ignored) {
         }
         this.commandQueue.close();
-        MetalNativeBridge.INSTANCE.metallum_release_object(this.bootstrap.device());
+        MetalNativeBridge.INSTANCE.metallum_release_object(this.metalDeviceHandle);
         MetalTerrainFaceCulling.setEnabled(false);
         MetalTerrainVertexPacking.setEnabled(false);
     }
 
     @Override
-    public GpuQueryPool createTimestampQueryPool(final int size) {
+    public @NonNull GpuQueryPool createTimestampQueryPool(final int size) {
         return new MetalGpuQueryPool(size);
     }
 
@@ -178,12 +186,12 @@ final class MetalDevice implements GpuDeviceBackend {
     }
 
     @Override
-    public DeviceInfo getDeviceInfo() {
+    public @NonNull DeviceInfo getDeviceInfo() {
         return this.deviceInfo;
     }
 
     MemorySegment metalDeviceHandle() {
-        return this.bootstrap.device();
+        return this.metalDeviceHandle;
     }
 
     void waitForSubmittedGpuWork() {
@@ -218,13 +226,13 @@ final class MetalDevice implements GpuDeviceBackend {
         return compiled;
     }
 
-    private static DeviceInfo buildDeviceInfo(final MetalCocoaBootstrap.BootstrapContext bootstrap) {
+    private static DeviceInfo buildDeviceInfo(final String deviceName) {
         DeviceType type = DeviceType.INTEGRATED;
         Set<String> underlyingExtensions = Set.of("CAMetalLayer", "MTLDevice", "Runtime MSL");
         String osVersion = System.getProperty("os.version", "").trim();
         String driverDescription = "macOS " + osVersion;
         return new DeviceInfo(
-                bootstrap.deviceName(),
+                deviceName,
                 "Apple",
                 driverDescription,
                 true,

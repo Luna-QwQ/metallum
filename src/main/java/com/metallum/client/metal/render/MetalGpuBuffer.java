@@ -36,13 +36,13 @@ final class MetalGpuBuffer extends GpuBuffer {
         this.nativeHandle = pooledHandle != null
                 ? pooledHandle
                 : MetalNativeBridge.INSTANCE.metallum_create_buffer(device.metalDeviceHandle(), this.allocationSize, this.resourceOptions);
-        if (MetalProbe.isNullHandle(this.nativeHandle)) {
+        if (MetalNativeBridge.isNullHandle(this.nativeHandle)) {
             throw new IllegalStateException("Failed to create Metal buffer");
         }
 
         if (this.cpuAccessible) {
             MemorySegment contents = MetalNativeBridge.INSTANCE.metallum_get_buffer_contents(this.nativeHandle);
-            if (MetalProbe.isNullHandle(contents)) {
+            if (MetalNativeBridge.isNullHandle(contents)) {
                 MetalNativeBridge.INSTANCE.metallum_release_object(this.nativeHandle);
                 this.nativeHandle = null;
                 throw new IllegalStateException("MTLBuffer.contents returned null");

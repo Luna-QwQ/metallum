@@ -265,7 +265,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
                 blendFunction.map(blendFunction4 -> MetalPipelineSupport.toBlendOpCode(blendFunction4.alpha().op())).orElse(0L),
                 colorTarget.writeMask()
         );
-        if (MetalProbe.isNullHandle(created)) {
+        if (MetalNativeBridge.isNullHandle(created)) {
             return null;
         }
 

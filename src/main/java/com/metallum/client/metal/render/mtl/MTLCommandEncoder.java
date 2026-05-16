@@ -1,6 +1,5 @@
 package com.metallum.client.metal.render.mtl;
 
-import com.metallum.client.metal.render.MetalProbe;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -16,14 +15,14 @@ public abstract class MTLCommandEncoder {
     }
 
     MemorySegment handle() {
-        if (MetalProbe.isNullHandle(this.handle)) {
+        if (MetalNativeBridge.isNullHandle(this.handle)) {
             throw new IllegalStateException(getClass().getSimpleName() + " is closed");
         }
         return this.handle;
     }
 
     public void endEncoding() {
-        if (MetalProbe.isNullHandle(this.handle)) {
+        if (MetalNativeBridge.isNullHandle(this.handle)) {
             return;
         }
         MetalNativeBridge.INSTANCE.MTLCommandEncoder_endEncoding(this.handle);
