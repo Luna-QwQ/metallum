@@ -24,7 +24,10 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Environment(EnvType.CLIENT)
@@ -286,7 +289,7 @@ final class MetalRenderPass implements RenderPassBackend {
     private MTLRenderCommandEncoder renderEncoder() {
         MetalGpuTextureView colorTextureView = (MetalGpuTextureView) colorTexture;
         MetalGpuTextureView depthTextureView = depthTexture == null ? null : (MetalGpuTextureView) depthTexture;
-        MTLRenderCommandEncoder enc = commandEncoder.renderCommandEncoder(
+        return commandEncoder.renderCommandEncoder(
                 colorTextureView,
                 depthTextureView,
                 colorTexture.getWidth(0),
@@ -299,11 +302,6 @@ final class MetalRenderPass implements RenderPassBackend {
                 clearDepthEnabled,
                 clearDepthValue
         );
-        if (enc == null) {
-            throw new IllegalStateException("Native render pass is unavailable");
-        }
-
-        return enc;
     }
 
     void end() {

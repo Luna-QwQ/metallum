@@ -75,8 +75,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 
         metalEncoder.flushPendingClear(MetalCommandEncoder.castTexture(textureView.texture()));
         metalEncoder.submitRenderPass();
-        metalEncoder.endBlitEncoder();
-        metalEncoder.endRenderEncoder();
+        metalEncoder.endEncoder();
         MetalGpuTexture source = (MetalGpuTexture) textureView.texture();
         var commandBuffer = metalEncoder.commandBuffer();
         commandBuffer.encodePresentTextureToDrawable(this.drawable, source.nativeHandle());

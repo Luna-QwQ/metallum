@@ -9,6 +9,7 @@ import com.mojang.blaze3d.systems.GpuBackend;
 import com.mojang.blaze3d.systems.GpuDevice;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.jspecify.annotations.NonNull;
 import org.lwjgl.glfw.GLFW;
 
 @Environment(EnvType.CLIENT)
@@ -25,16 +26,12 @@ public class MetalBackend implements GpuBackend {
 
     @Override
     public void handleWindowCreationErrors(final GLFWErrorCapture.Error error) throws BackendCreationException {
-        if (error != null) {
-            throw new BackendCreationException(error.toString(), BackendCreationException.Reason.GLFW_ERROR);
-        }
-
-        throw new BackendCreationException("Failed to create window for Metal", BackendCreationException.Reason.GLFW_ERROR);
+        throw new BackendCreationException(error.toString(), BackendCreationException.Reason.GLFW_ERROR);
     }
 
     @Override
-    public GpuDevice createDevice(
-            final long window, final ShaderSource defaultShaderSource, final GpuDebugOptions debugOptions, final Runnable criticalShaderLoader
+    public @NonNull GpuDevice createDevice(
+            final long window, final @NonNull ShaderSource defaultShaderSource, final @NonNull GpuDebugOptions debugOptions, final @NonNull Runnable criticalShaderLoader
     )
             throws BackendCreationException {
         MetalProbe.ProbeResult probe = MetalProbe.probe();

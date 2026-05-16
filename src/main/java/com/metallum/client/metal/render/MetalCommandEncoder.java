@@ -1,7 +1,8 @@
 package com.metallum.client.metal.render;
 
-import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLBlitCommandEncoder;
 import com.metallum.client.metal.render.mtl.MTLCommandBuffer;
+import com.metallum.client.metal.render.mtl.MTLCommandEncoder;
 import com.metallum.client.metal.render.mtl.MTLRenderCommandEncoder;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
@@ -27,7 +28,7 @@ import java.util.*;
 final class MetalCommandEncoder implements CommandEncoderBackend {
     public static final int MAX_SUBMITS_IN_FLIGHT = 3;
     private final MetalDevice device;
-    long currentSubmitIndex = MAX_SUBMITS_IN_FLIGHT;
+    private long currentSubmitIndex = MAX_SUBMITS_IN_FLIGHT;
     private long completedSubmitIndex = 0L;
     private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT + 1);
     private final Map<MetalGpuTexture, Vector4fc> pendingColorClears = new IdentityHashMap<>();
@@ -36,10 +37,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     @Nullable
     private MetalRenderPass currentRenderPass;
     @Nullable
-    MTLCommandBuffer commandBuffer;
-    private MemorySegment blitEncoder = MemorySegment.NULL;
+    private MTLCommandBuffer commandBuffer;
     @Nullable
-    private MTLRenderCommandEncoder renderEncoder;
+    private MTLCommandEncoder currentEncoder;
     private MemorySegment renderColorAttachment = MemorySegment.NULL;
     private MemorySegment renderDepthAttachment = MemorySegment.NULL;
 
@@ -57,18 +57,20 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         );
     }
 
-    MemorySegment blitCommandEncoder() {
-        endRenderEncoder();
-        return blitEncoder = commandBuffer().makeBlitCommandEncoder();
+    MTLBlitCommandEncoder blitCommandEncoder() {
+        endEncoder();
+        MTLBlitCommandEncoder encoder = commandBuffer().makeBlitCommandEncoder();
+        currentEncoder = encoder;
+        return encoder;
     }
 
-    void endBlitEncoder() {
-        if (MetalProbe.isNullHandle(blitEncoder)) {
-            return;
+    void endEncoder() {
+        if (currentEncoder != null) {
+            currentEncoder.endEncoding();
+            currentEncoder = null;
         }
-        MetalNativeBridge.INSTANCE.MTLCommandEncoder_endEncoding(blitEncoder);
-        MetalNativeBridge.INSTANCE.metallum_release_object(blitEncoder);
-        blitEncoder = MemorySegment.NULL;
+        renderColorAttachment = MemorySegment.NULL;
+        renderDepthAttachment = MemorySegment.NULL;
     }
 
     @Override
@@ -78,8 +80,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         }
 
         submitRenderPass();
-        endBlitEncoder();
-        endRenderEncoder();
+        endEncoder();
 
         commandBuffer.commit();
         inFlightCommandBuffers.put(currentSubmitIndex, commandBuffer);
@@ -106,16 +107,15 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             final boolean clearDepthEnabled,
             final double clearDepthValue
     ) {
-        endBlitEncoder();
         MemorySegment colorAttachment = colorTextureView.nativeHandle();
         MemorySegment depthAttachment = depthTextureView == null ? MemorySegment.NULL : depthTextureView.nativeHandle();
-        if (renderEncoder != null
+        if (currentEncoder instanceof MTLRenderCommandEncoder enc
                 && MetalPipelineSupport.sameHandle(renderColorAttachment, colorAttachment)
                 && MetalPipelineSupport.sameHandle(renderDepthAttachment, depthAttachment)) {
-            return renderEncoder;
+            return enc;
         }
 
-        endRenderEncoder();
+        endEncoder();
         MTLRenderCommandEncoder encoder = commandBuffer().makeRenderCommandEncoder(
                 colorAttachment,
                 depthAttachment,
@@ -129,23 +129,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 clearDepthEnabled ? 1 : 0,
                 clearDepthValue
         );
-        if (encoder == null) {
-            return null;
-        }
-        renderEncoder = encoder;
+        currentEncoder = encoder;
         renderColorAttachment = colorAttachment;
         renderDepthAttachment = depthAttachment;
         return encoder;
-    }
-
-    void endRenderEncoder() {
-        if (renderEncoder == null) {
-            return;
-        }
-        renderEncoder.endEncoding();
-        renderEncoder = null;
-        renderColorAttachment = MemorySegment.NULL;
-        renderDepthAttachment = MemorySegment.NULL;
     }
 
     @Override
@@ -242,8 +229,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             return;
         }
         submitRenderPass();
-        endBlitEncoder();
-        endRenderEncoder();
+        endEncoder();
         commandBuffer().clearColorDepthTexturesRegion(
                 color.nativeHandle(),
                 clearColorCopy.x(),
@@ -270,9 +256,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         int length = data.remaining();
 
         try (MetalGpuBuffer stagingBuffer = createStagingBuffer(data)) {
-            MemorySegment blit = blitCommandEncoder();
-            MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToBuffer(
-                    blit,
+            MTLBlitCommandEncoder blit = blitCommandEncoder();
+            blit.copyFromBufferToBuffer(
                     stagingBuffer.nativeHandle(),
                     0L,
                     buffer.nativeHandle(),
@@ -280,7 +265,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                     length
             );
 
-            endBlitEncoder();
+            endEncoder();
             queueForDestroy(stagingBuffer::close);
         }
     }
@@ -289,16 +274,15 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     public void copyToBuffer(final GpuBufferSlice source, final GpuBufferSlice target) {
         MetalGpuBuffer sourceBuffer = castBuffer(source.buffer());
         MetalGpuBuffer targetBuffer = castBuffer(target.buffer());
-        MemorySegment blit = blitCommandEncoder();
-        MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToBuffer(
-                blit,
+        MTLBlitCommandEncoder blit = blitCommandEncoder();
+        blit.copyFromBufferToBuffer(
                 sourceBuffer.nativeHandle(),
                 source.offset(),
                 targetBuffer.nativeHandle(),
                 target.offset(),
                 source.length()
         );
-        endBlitEncoder();
+        endEncoder();
     }
 
     @Override
@@ -358,9 +342,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         long bytesPerImage = bytesPerRow * sourceHeight;
 
         try (MetalGpuBuffer stagingBuffer = createStagingBuffer(source)) {
-            MemorySegment blit = blitCommandEncoder();
-            MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromBufferToTexture(
-                    blit,
+            MTLBlitCommandEncoder blit = blitCommandEncoder();
+            blit.copyFromBufferToTexture(
                     stagingBuffer.nativeHandle(),
                     sourceOffset,
                     destination.nativeHandle(),
@@ -374,7 +357,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                     bytesPerImage
             );
 
-            endBlitEncoder();
+            endEncoder();
         }
     }
 
@@ -402,9 +385,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         int rowBytes = width * bytesPerPixel;
         int bytesPerImage = rowBytes * height;
 
-        MemorySegment blit = blitCommandEncoder();
-        MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromTextureToBuffer(
-                blit,
+        MTLBlitCommandEncoder blit = blitCommandEncoder();
+        blit.copyFromTextureToBuffer(
                 texture.nativeHandle(),
                 buffer.nativeHandle(),
                 offset,
@@ -418,7 +400,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 bytesPerImage
         );
 
-        endBlitEncoder();
+        endEncoder();
         queueForDestroy(callback);
     }
 
@@ -438,9 +420,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuTexture dstTexture = castTexture(destination);
         flushPendingClear(srcTexture);
         flushPendingClear(dstTexture);
-        MemorySegment blit = blitCommandEncoder();
-        MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_copyFromTextureToTexture(
-                blit,
+        MTLBlitCommandEncoder blit = blitCommandEncoder();
+        blit.copyFromTextureToTexture(
                 srcTexture.nativeHandle(),
                 dstTexture.nativeHandle(),
                 mipLevel,
@@ -451,7 +432,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 width,
                 height
         );
-        endBlitEncoder();
+        endEncoder();
     }
 
     @Override
@@ -486,8 +467,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     void close() {
         submitRenderPass();
-        endBlitEncoder();
-        endRenderEncoder();
+        endEncoder();
         for (MTLCommandBuffer commandBuffer : inFlightCommandBuffers.values()) {
             commandBuffer.close();
         }
@@ -500,10 +480,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     }
 
     void waitForSubmittedGpuWork() {
-        if (commandBuffer != null || currentRenderPass != null || !MetalProbe.isNullHandle(blitEncoder)) {
+        if (commandBuffer != null || currentRenderPass != null || currentEncoder != null) {
             submit();
         } else {
-            endRenderEncoder();
+            endEncoder();
         }
         long latestSubmit = currentSubmitIndex - 1L;
         if (latestSubmit > completedSubmitIndex) {
@@ -544,9 +524,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             return;
         }
 
-        endBlitEncoder();
-        endRenderEncoder();
-        MTLRenderCommandEncoder encoder = commandBuffer().makeRenderCommandEncoder(
+        endEncoder();
+        currentEncoder = commandBuffer().makeRenderCommandEncoder(
                 colorClear != null ? texture.nativeHandle() : null,
                 depthClear != null ? texture.nativeHandle() : null,
                 1.0, 1.0,
@@ -558,9 +537,6 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 depthClear != null ? 1 : 0,
                 depthClear != null ? depthClear : 1.0
         );
-        if (encoder != null) {
-            encoder.endEncoding();
-        }
     }
 
     private static boolean isFullTextureView(final GpuTextureView textureView) {

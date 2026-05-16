@@ -15,12 +15,12 @@ public final class MTLCommandBuffer {
         this.handle = handle;
     }
 
-    public MemorySegment makeBlitCommandEncoder() {
-        MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeBlitCommandEncoder(this.requireHandle());
+    public MTLBlitCommandEncoder makeBlitCommandEncoder() {
+        MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeBlitCommandEncoder(handle());
         if (MetalProbe.isNullHandle(encoder)) {
             throw new IllegalStateException("Failed to create MTLBlitCommandEncoder");
         }
-        return encoder;
+        return new MTLBlitCommandEncoder(encoder);
     }
 
     public MTLRenderCommandEncoder makeRenderCommandEncoder(
@@ -37,7 +37,7 @@ public final class MTLCommandBuffer {
             final double clearDepth
     ) {
         MemorySegment encoder = MetalNativeBridge.INSTANCE.MTLCommandBuffer_makeRenderCommandEncoder(
-                this.requireHandle(),
+                handle(),
                 colorTexture,
                 depthTexture,
                 viewportWidth,
@@ -51,7 +51,7 @@ public final class MTLCommandBuffer {
                 clearDepth
         );
         if (MetalProbe.isNullHandle(encoder)) {
-            return null;
+            throw new IllegalStateException("Failed to create MTLRenderCommandEncoder");
         }
         return new MTLRenderCommandEncoder(encoder);
     }
@@ -70,7 +70,7 @@ public final class MTLCommandBuffer {
             final int regionHeight
     ) {
         MetalNativeBridge.INSTANCE.MTLCommandBuffer_clearColorDepthTexturesRegion(
-                this.requireHandle(),
+                handle(),
                 colorTexture,
                 clearColorRed,
                 clearColorGreen,
@@ -86,45 +86,45 @@ public final class MTLCommandBuffer {
     }
 
     public void encodePresentTextureToDrawable(final MemorySegment drawable, final MemorySegment sourceTexture) {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_encodePresentTextureToDrawable(this.requireHandle(), drawable, sourceTexture);
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_encodePresentTextureToDrawable(handle(), drawable, sourceTexture);
     }
 
     public void presentDrawable(final MemorySegment drawable) {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_presentDrawable(this.requireHandle(), drawable);
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_presentDrawable(handle(), drawable);
     }
 
     public void commit() {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_commit(this.requireHandle());
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_commit(handle());
     }
 
     public boolean isCompleted() {
-        return MetalNativeBridge.INSTANCE.MTLCommandBuffer_isCompleted(this.requireHandle()) == 1;
+        return MetalNativeBridge.INSTANCE.MTLCommandBuffer_isCompleted(handle()) == 1;
     }
 
     public boolean waitUntilCompleted(final long timeoutMs) {
-        return MetalNativeBridge.INSTANCE.MTLCommandBuffer_waitUntilCompleted(this.requireHandle(), Math.max(timeoutMs, 0L)) == 0;
+        return MetalNativeBridge.INSTANCE.MTLCommandBuffer_waitUntilCompleted(handle(), Math.max(timeoutMs, 0L)) == 0;
     }
 
     public void pushDebugGroup(final String label) {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_pushDebugGroup(this.requireHandle(), label);
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_pushDebugGroup(handle(), label);
     }
 
     public void popDebugGroup() {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_popDebugGroup(this.requireHandle());
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_popDebugGroup(handle());
     }
 
     public void close() {
-        if (MetalProbe.isNullHandle(this.handle)) {
+        if (MetalProbe.isNullHandle(handle)) {
             return;
         }
-        MetalNativeBridge.INSTANCE.metallum_release_object(this.handle);
-        this.handle = MemorySegment.NULL;
+        MetalNativeBridge.INSTANCE.metallum_release_object(handle);
+        handle = MemorySegment.NULL;
     }
 
-    private MemorySegment requireHandle() {
-        if (MetalProbe.isNullHandle(this.handle)) {
+    private MemorySegment handle() {
+        if (MetalProbe.isNullHandle(handle)) {
             throw new IllegalStateException("MTLCommandBuffer is closed");
         }
-        return this.handle;
+        return handle;
     }
 }
