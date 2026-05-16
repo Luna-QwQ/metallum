@@ -29,11 +29,10 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     public static final int MAX_SUBMITS_IN_FLIGHT = 3;
     private final MetalDevice device;
     private long currentSubmitIndex = MAX_SUBMITS_IN_FLIGHT;
-    private long completedSubmitIndex = 0L;
+    private final InFlight[] inFlight = new InFlight[MAX_SUBMITS_IN_FLIGHT];
     private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT + 1);
     private final Map<MetalGpuTexture, Vector4fc> pendingColorClears = new IdentityHashMap<>();
     private final Map<MetalGpuTexture, Double> pendingDepthClears = new IdentityHashMap<>();
-    private final Map<Long, MTLCommandBuffer> inFlightCommandBuffers = new java.util.HashMap<>();
     @Nullable
     private MetalRenderPass currentRenderPass;
     @Nullable
@@ -83,12 +82,19 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         endEncoder();
 
         commandBuffer.commit();
-        inFlightCommandBuffers.put(currentSubmitIndex, commandBuffer);
+        int slot = (int) (currentSubmitIndex % MAX_SUBMITS_IN_FLIGHT);
+
+        InFlight toClose = inFlight[slot];
+        inFlight[slot] = new InFlight(currentSubmitIndex, commandBuffer);
         commandBuffer = null;
         currentSubmitIndex++;
 
         if (!awaitSubmitCompletion(currentSubmitIndex - MAX_SUBMITS_IN_FLIGHT, 5000L)) {
             throw new IllegalStateException("5s timeout reached when waiting for Metal submit completion");
+        }
+
+        if (toClose != null) {
+            toClose.buffer.close();
         }
 
         destroyQueue.rotate();
@@ -333,19 +339,37 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             final int width,
             final int height,
             final int sourceWidth,
-            final int sourceHeight
+            final int ignoredSourceHeight
     ) {
         flushPendingClear(destination);
 
         int pixelSize = destination.pixelSize();
-        long bytesPerRow = (long) sourceWidth * pixelSize;
-        long bytesPerImage = bytesPerRow * sourceHeight;
+        int rowBytes = width * pixelSize;
+        int bytesPerImage = rowBytes * height;
+        long sourceRowBytes = (long) sourceWidth * pixelSize;
 
-        try (MetalGpuBuffer stagingBuffer = createStagingBuffer(source)) {
+        try (MetalGpuBuffer stagingBuffer = new MetalGpuBuffer(device, GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC, bytesPerImage)) {
+            ByteBuffer staging = stagingBuffer.fullStorageView().order(ByteOrder.nativeOrder());
+            staging.limit(bytesPerImage);
+
+            long srcAddr = MemoryUtil.memAddress(source) + sourceOffset;
+            long dstAddr = MemoryUtil.memAddress(staging);
+            if (sourceRowBytes == rowBytes) {
+                MemoryUtil.memCopy(srcAddr, dstAddr, bytesPerImage);
+            } else {
+                for (int row = 0; row < height; row++) {
+                    MemoryUtil.memCopy(
+                            srcAddr + (long) row * sourceRowBytes,
+                            dstAddr + (long) row * rowBytes,
+                            rowBytes
+                    );
+                }
+            }
+
             MTLBlitCommandEncoder blit = blitCommandEncoder();
             blit.copyFromBufferToTexture(
                     stagingBuffer.nativeHandle(),
-                    sourceOffset,
+                    0L,
                     destination.nativeHandle(),
                     mipLevel,
                     depthOrLayer,
@@ -353,10 +377,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                     destY,
                     width,
                     height,
-                    bytesPerRow,
+                    rowBytes,
                     bytesPerImage
             );
-
             endEncoder();
         }
     }
@@ -445,33 +468,25 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     }
 
     boolean awaitSubmitCompletion(final long submitIndex, final long timeoutMs) {
-        if (completedSubmitIndex >= submitIndex) {
-            return true;
-        }
         if (submitIndex == currentSubmitIndex) {
             throw new IllegalStateException("Cannot wait on a fence for the current submit");
         }
-
-        MTLCommandBuffer commandBuffer = inFlightCommandBuffers.get(submitIndex);
-        if (commandBuffer == null) {
-            releaseCompletedCommandBuffers(submitIndex);
-            return true;
+        for (InFlight f : inFlight) {
+            if (f != null && f.index == submitIndex) {
+                return f.buffer.isCompleted() || f.buffer.waitUntilCompleted(timeoutMs);
+            }
         }
-
-        if (commandBuffer.isCompleted() || commandBuffer.waitUntilCompleted(timeoutMs)) {
-            releaseCompletedCommandBuffers(submitIndex);
-            return true;
-        }
-        return false;
+        return true;
     }
 
     void close() {
         submitRenderPass();
         endEncoder();
-        for (MTLCommandBuffer commandBuffer : inFlightCommandBuffers.values()) {
-            commandBuffer.close();
+        for (InFlight f : inFlight) {
+            if (f != null) {
+                f.buffer.close();
+            }
         }
-        inFlightCommandBuffers.clear();
         if (commandBuffer != null) {
             commandBuffer.close();
             commandBuffer = null;
@@ -486,20 +501,9 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             endEncoder();
         }
         long latestSubmit = currentSubmitIndex - 1L;
-        if (latestSubmit > completedSubmitIndex) {
+        if (latestSubmit >= MAX_SUBMITS_IN_FLIGHT) {
             awaitSubmitCompletion(latestSubmit, Long.MAX_VALUE);
         }
-    }
-
-    private void releaseCompletedCommandBuffers(final long completedSubmitIndex) {
-        this.completedSubmitIndex = Math.max(this.completedSubmitIndex, completedSubmitIndex);
-        inFlightCommandBuffers.entrySet().removeIf(entry -> {
-            if (entry.getKey() > this.completedSubmitIndex) {
-                return false;
-            }
-            entry.getValue().close();
-            return true;
-        });
     }
 
     @Override
@@ -572,5 +576,8 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         staging.limit(length);
         staging.put(source);
         return stagingBuffer;
+    }
+
+    private record InFlight(long index, MTLCommandBuffer buffer) {
     }
 }
