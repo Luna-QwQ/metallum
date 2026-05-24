@@ -124,7 +124,7 @@ final class MetalDevice implements GpuDeviceBackend {
 
     @Override
     public @NonNull GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final ByteBuffer data) {
-        MetalGpuBuffer buffer = (MetalGpuBuffer) this.createBuffer(label, usage, data.remaining());
+        MetalGpuBuffer buffer = (MetalGpuBuffer) this.createBuffer(label, usage | 8, data.remaining());
         this.commandEncoder.writeToBuffer(buffer.slice(), data.duplicate());
         return buffer;
     }
@@ -223,8 +223,8 @@ final class MetalDevice implements GpuDeviceBackend {
                 true,
                 "Metal",
                 1.0F,
-                new DeviceLimits(16, 256, 16384, 1L << 30, 1),
-                new DeviceFeatures(false, false, false, false, true),
+                new DeviceLimits(16, 256, 16384, 1L << 30, 0, 1),
+                new DeviceFeatures(false, false, false, false, false, false, true),
                 underlyingExtensions,
                 new HintsAndWorkarounds(false, false),
                 type

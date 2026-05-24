@@ -23,7 +23,6 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.*;
 
 @Environment(EnvType.CLIENT)
@@ -33,6 +32,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     private long currentSubmitIndex = MAX_SUBMITS_IN_FLIGHT;
     private final InFlight[] inFlight = new InFlight[MAX_SUBMITS_IN_FLIGHT];
     private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT + 1);
+    private final MetalTransientMemory transientMemory;
     private final Map<MetalGpuTexture, Vector4fc> pendingColorClears = new IdentityHashMap<>();
     private final Map<MetalGpuTexture, Double> pendingDepthClears = new IdentityHashMap<>();
     private final MemorySegment fence;
@@ -47,6 +47,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
     MetalCommandEncoder(final MetalDevice device) {
         this.device = device;
+        this.transientMemory = new MetalTransientMemory(device, this);
         fence = MetalNativeBridge.INSTANCE.metallum_create_fence(device.metalDeviceHandle());
         if (MetalNativeBridge.isNullHandle(fence)) {
             throw new IllegalStateException("Failed to allocate MTLFence");
@@ -85,6 +86,11 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     }
 
     @Override
+    public TransientMemory transientMemory() {
+        return transientMemory;
+    }
+
+    @Override
     public void submit() {
         if (commandBuffer == null) {
             return;
@@ -109,6 +115,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             toClose.buffer.close();
         }
 
+        transientMemory.rotate();
         destroyQueue.rotate();
     }
 
@@ -285,19 +292,18 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuBuffer buffer = castBuffer(destination.buffer());
         int length = data.remaining();
 
-        try (MetalGpuBuffer stagingBuffer = createStagingBuffer(data)) {
-            MTLBlitCommandEncoder blit = blitCommandEncoder();
-            blit.copyFromBufferToBuffer(
-                    stagingBuffer.nativeHandle(),
-                    0L,
-                    buffer.nativeHandle(),
-                    destination.offset(),
-                    length
-            );
+        GpuBufferSlice staging = transientMemory.uploadStaging(data, 4L, GpuBuffer.USAGE_COPY_SRC);
+        MetalGpuBuffer stagingBuffer = castBuffer(staging.buffer());
 
-            endEncoder();
-            queueForDestroy(stagingBuffer::close);
-        }
+        MTLBlitCommandEncoder blit = blitCommandEncoder();
+        blit.copyFromBufferToBuffer(
+                stagingBuffer.nativeHandle(),
+                staging.offset(),
+                buffer.nativeHandle(),
+                destination.offset(),
+                length
+        );
+        endEncoder();
     }
 
     @Override
@@ -372,12 +378,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         int bytesPerImage = rowBytes * height;
         long sourceRowBytes = (long) sourceWidth * pixelSize;
 
-        try (MetalGpuBuffer stagingBuffer = new MetalGpuBuffer(device, GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC, bytesPerImage)) {
-            ByteBuffer staging = stagingBuffer.fullStorageView().order(ByteOrder.nativeOrder());
-            staging.limit(bytesPerImage);
+        try (GpuBufferSlice.MappedView mapped = transientMemory.allocateStaging(bytesPerImage, pixelSize, GpuBuffer.USAGE_COPY_SRC)) {
+            GpuBufferSlice slice = mapped.slice();
+            MetalGpuBuffer stagingBuffer = castBuffer(slice.buffer());
 
             long srcAddr = MemoryUtil.memAddress(source) + sourceOffset;
-            long dstAddr = MemoryUtil.memAddress(staging);
+            long dstAddr = MemoryUtil.memAddress(mapped.data());
             if (sourceRowBytes == rowBytes) {
                 MemoryUtil.memCopy(srcAddr, dstAddr, bytesPerImage);
             } else {
@@ -393,7 +399,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             MTLBlitCommandEncoder blit = blitCommandEncoder();
             blit.copyFromBufferToTexture(
                     stagingBuffer.nativeHandle(),
-                    0L,
+                    slice.offset(),
                     destination.nativeHandle(),
                     mipLevel,
                     depthOrLayer,
@@ -515,6 +521,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
             commandBuffer.close();
             commandBuffer = null;
         }
+        transientMemory.close();
         device.queueResourceRelease(fence);
         destroyQueue.close();
     }
@@ -590,19 +597,6 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 && height == color.getHeight(0)
                 && width == depth.getWidth(0)
                 && height == depth.getHeight(0);
-    }
-
-    private MetalGpuBuffer createStagingBuffer(final ByteBuffer source) {
-        int length = source.remaining();
-        MetalGpuBuffer stagingBuffer = new MetalGpuBuffer(
-                device,
-                GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC,
-                length
-        );
-        ByteBuffer staging = stagingBuffer.fullStorageView().order(ByteOrder.nativeOrder());
-        staging.limit(length);
-        staging.put(source);
-        return stagingBuffer;
     }
 
     private record InFlight(long index, MTLCommandBuffer buffer) {

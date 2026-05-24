@@ -22,8 +22,10 @@ import net.minecraft.SharedConstants;
 import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.lwjgl.PointerBuffer;
 
 import java.lang.foreign.MemorySegment;
+import java.nio.IntBuffer;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -191,6 +193,16 @@ final class MetalRenderPass implements RenderPassBackend {
     }
 
     @Override
+    public void multiDrawIndexed(@NonNull IntBuffer drawParameters, int instanceCount, int firstInstance, int drawCount) {
+        throw  new UnsupportedOperationException();
+    }
+
+    @Override
+    public void multiDrawIndexed(@NonNull PointerBuffer firstIndexOffsets, @NonNull IntBuffer indexCounts, @NonNull IntBuffer vertexOffsets, int drawCount) {
+        throw  new UnsupportedOperationException();
+    }
+
+    @Override
     public void drawIndexedIndirect(final @NonNull GpuBufferSlice commands, final int drawCount) {
         throw new UnsupportedOperationException("Metal backend does not support indirect indexed draws yet");
     }
@@ -254,6 +266,16 @@ final class MetalRenderPass implements RenderPassBackend {
         } else {
             enc.drawPrimitives(primitiveType, firstVertex, vertexCount, Math.max(1, instanceCount));
         }
+    }
+
+    @Override
+    public void multiDraw(@NonNull IntBuffer drawParameters, int instanceCount, int firstInstance, int drawCount) {
+        throw  new UnsupportedOperationException();
+    }
+
+    @Override
+    public void multiDraw(@NonNull IntBuffer firstVertices, @NonNull IntBuffer vertexCounts, int drawCount) {
+        throw  new UnsupportedOperationException();
     }
 
     @Override

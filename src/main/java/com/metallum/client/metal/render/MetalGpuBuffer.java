@@ -15,7 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 @Environment(EnvType.CLIENT)
-final class MetalGpuBuffer extends GpuBuffer {
+class MetalGpuBuffer extends GpuBuffer {
     private final MetalDevice device;
     private final boolean cpuAccessible;
     private final long resourceOptions;
@@ -50,6 +50,16 @@ final class MetalGpuBuffer extends GpuBuffer {
         } else {
             this.storage = null;
         }
+    }
+
+    MetalGpuBuffer(final MetalDevice device, @GpuBuffer.Usage final int usage, final long size, final @Nullable MemorySegment wrappedHandle) {
+        super(usage, size);
+        this.device = device;
+        this.cpuAccessible = false;
+        this.resourceOptions = 0L;
+        this.allocationSize = size;
+        this.nativeHandle = wrappedHandle;
+        this.storage = null;
     }
 
     ByteBuffer sliceStorage(final long offset, final long length) {
