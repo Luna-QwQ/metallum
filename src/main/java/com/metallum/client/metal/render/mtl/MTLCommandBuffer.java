@@ -66,7 +66,8 @@ public final class MTLCommandBuffer {
             final int regionX,
             final int regionY,
             final int regionWidth,
-            final int regionHeight
+            final int regionHeight,
+            final MemorySegment globalFence
     ) {
         MetalNativeBridge.INSTANCE.MTLCommandBuffer_clearColorDepthTexturesRegion(
                 handle(),
@@ -80,12 +81,13 @@ public final class MTLCommandBuffer {
                 regionX,
                 regionY,
                 regionWidth,
-                regionHeight
+                regionHeight,
+                globalFence
         );
     }
 
-    public void encodePresentTextureToDrawable(final MemorySegment drawable, final MemorySegment sourceTexture) {
-        MetalNativeBridge.INSTANCE.MTLCommandBuffer_encodePresentTextureToDrawable(handle(), drawable, sourceTexture);
+    public void encodePresentTextureToDrawable(final MemorySegment drawable, final MemorySegment sourceTexture, final MemorySegment globalFence) {
+        MetalNativeBridge.INSTANCE.MTLCommandBuffer_encodePresentTextureToDrawable(handle(), drawable, sourceTexture, globalFence);
     }
 
     public void presentDrawable(final MemorySegment drawable) {

@@ -2,7 +2,7 @@ package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.optimization.MetalTerrainFaceCulling;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
-import com.metallum.client.metal.render.mtl.MTLRenderCommandEncoder;
+import com.metallum.client.metal.render.mtl.*;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.IndexType;
 import com.mojang.blaze3d.PrimitiveTopology;
@@ -268,20 +268,20 @@ final class MetalRenderPass implements RenderPassBackend {
         }
     }
 
-    long colorAttachmentFormat() {
+    MTLPixelFormat colorAttachmentFormat() {
         return ((MetalGpuTexture) colorTexture.texture()).mtlPixelFormat();
     }
 
-    long depthAttachmentFormat() {
+    MTLPixelFormat depthAttachmentFormat() {
         if (depthTexture == null) {
-            return 0L;
+            return MTLPixelFormat.Invalid;
         }
         return ((MetalGpuTexture) depthTexture.texture()).mtlPixelFormat();
     }
 
-    long stencilAttachmentFormat() {
+    MTLPixelFormat stencilAttachmentFormat() {
         if (depthTexture == null) {
-            return 0L;
+            return MTLPixelFormat.Invalid;
         }
         return ((MetalGpuTexture) depthTexture.texture()).mtlStencilPixelFormat();
     }
@@ -404,7 +404,7 @@ final class MetalRenderPass implements RenderPassBackend {
             enc.setRenderPipelineState(pipelineHandle);
             nativePipeline = pipelineHandle;
 
-            if (depthAttachmentFormat() != 0L) {
+            if (depthAttachmentFormat() != MTLPixelFormat.Invalid) {
                 MemorySegment depthState = MetalNativeBridge.INSTANCE.MTLDevice_makeDepthStencilState(
                         device.metalDeviceHandle(),
                         compiledPipeline.depthCompareOp(),
@@ -422,11 +422,9 @@ final class MetalRenderPass implements RenderPassBackend {
             }
 
             RenderPipeline pipelineInfo = compiledPipeline.info();
-            enc.setFrontFacingWinding(1);
-            enc.setCullMode(pipelineInfo.isCull() ? 2L : 0L);
-            enc.setTriangleFillMode(
-                    pipelineInfo.getPolygonMode() == PolygonMode.WIREFRAME ? 1 : 0
-            );
+            enc.setFrontFacingWinding(MTLWinding.Clockwise);
+            enc.setCullMode(pipelineInfo.isCull() ? MTLCullMode.Back : MTLCullMode.None);
+            enc.setTriangleFillMode(pipelineInfo.getPolygonMode() == PolygonMode.WIREFRAME ? MTLTriangleFillMode.Lines : MTLTriangleFillMode.Fill);
 
             pipelineChanged = true;
         }
@@ -560,7 +558,7 @@ final class MetalRenderPass implements RenderPassBackend {
         }
 
         MetalGpuBuffer texelBuffer = MetalCommandEncoder.castBuffer(texelSlice.buffer());
-        long pixelFormat = MetalPipelineSupport.texelBufferPixelFormatCode(texelFormat);
+        MTLPixelFormat pixelFormat = MetalPipelineSupport.toMtlPixelFormat(texelFormat);
         int pixelSize = texelFormat.pixelSize();
         long texelByteLength = texelSlice.length();
         if (texelByteLength <= 0L || texelByteLength % pixelSize != 0L) {
@@ -569,7 +567,7 @@ final class MetalRenderPass implements RenderPassBackend {
         long texelCount = texelByteLength / pixelSize;
         MemorySegment texelTexture = MetalNativeBridge.INSTANCE.metallum_create_buffer_texture_view(
                 texelBuffer.nativeHandle(),
-                pixelFormat,
+                pixelFormat.value,
                 texelSlice.offset(),
                 texelCount,
                 1L,

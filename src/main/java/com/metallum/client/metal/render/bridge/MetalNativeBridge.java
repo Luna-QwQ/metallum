@@ -79,6 +79,11 @@ public final class MetalNativeBridge {
     private final MethodHandle configureLayer;
     private final MethodHandle releaseObject;
     private final MethodHandle getBufferContents;
+    private final MethodHandle createFence;
+    private final MethodHandle MTLRenderCommandEncoderUpdateFence;
+    private final MethodHandle MTLRenderCommandEncoderWaitForFence;
+    private final MethodHandle MTLBlitCommandEncoderUpdateFence;
+    private final MethodHandle MTLBlitCommandEncoderWaitForFence;
 
     private MetalNativeBridge(final Arena libraryArena, final SymbolLookup lookup) {
         this.libraryArena = libraryArena;
@@ -182,14 +187,15 @@ public final class MetalNativeBridge {
                         INT,
                         INT,
                         INT,
-                        INT
+                        INT,
+                        ValueLayout.ADDRESS
                 )
         );
         this.CAMetalLayerNextDrawable = downcall(lookup, "metallum_CAMetalLayer_nextDrawable", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.MTLCommandBufferEncodePresentTextureToDrawable = downcall(
                 lookup,
                 "metallum_MTLCommandBuffer_encodePresentTextureToDrawable",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
         );
         this.MTLCommandBufferPresentDrawable = downcall(lookup, "metallum_MTLCommandBuffer_presentDrawable", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         this.createBuffer = downcall(lookup, "metallum_create_buffer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
@@ -243,6 +249,11 @@ public final class MetalNativeBridge {
         this.configureLayer = downcall(lookup, "metallum_configure_layer", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, DOUBLE, DOUBLE, INT));
         this.releaseObject = downcall(lookup, "metallum_release_object", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
         this.getBufferContents = downcall(lookup, "metallum_get_buffer_contents", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.createFence = downcall(lookup, "metallum_create_fence", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.MTLRenderCommandEncoderUpdateFence = downcall(lookup, "MTLRenderCommandEncoder_updateFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+        this.MTLRenderCommandEncoderWaitForFence = downcall(lookup, "MTLRenderCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+        this.MTLBlitCommandEncoderUpdateFence = downcall(lookup, "MTLBlitCommandEncoder_updateFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        this.MTLBlitCommandEncoderWaitForFence = downcall(lookup, "MTLBlitCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     }
 
     private static MetalNativeBridge loadNative() {
@@ -852,7 +863,8 @@ public final class MetalNativeBridge {
             final int x,
             final int y,
             final int width,
-            final int height
+            final int height,
+            final MemorySegment globalFence
     ) {
         try {
             this.MTLCommandBufferClearColorDepthTexturesRegion.invokeExact(
@@ -867,7 +879,8 @@ public final class MetalNativeBridge {
                     x,
                     y,
                     width,
-                    height
+                    height,
+                    segment(globalFence)
             );
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLCommandBuffer_clearColorDepthTexturesRegion", throwable);
@@ -948,9 +961,9 @@ public final class MetalNativeBridge {
         }
     }
 
-    public void MTLCommandBuffer_encodePresentTextureToDrawable(final MemorySegment commandBuffer, final MemorySegment drawable, final MemorySegment sourceTexture) {
+    public void MTLCommandBuffer_encodePresentTextureToDrawable(final MemorySegment commandBuffer, final MemorySegment drawable, final MemorySegment sourceTexture, final MemorySegment globalFence) {
         try {
-            this.MTLCommandBufferEncodePresentTextureToDrawable.invokeExact(segment(commandBuffer), segment(drawable), segment(sourceTexture));
+            this.MTLCommandBufferEncodePresentTextureToDrawable.invokeExact(segment(commandBuffer), segment(drawable), segment(sourceTexture), segment(globalFence));
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLCommandBuffer_encodePresentTextureToDrawable", throwable);
         }
@@ -969,6 +982,46 @@ public final class MetalNativeBridge {
             this.releaseObject.invokeExact(segment(object));
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_release_object", throwable);
+        }
+    }
+
+    public MemorySegment metallum_create_fence(final MemorySegment device) {
+        try {
+            return (MemorySegment) this.createFence.invokeExact(segment(device));
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_create_fence", throwable);
+        }
+    }
+
+    public void MTLRenderCommandEncoder_updateFence(final MemorySegment encoder, final MemorySegment fence, final long stages) {
+        try {
+            this.MTLRenderCommandEncoderUpdateFence.invokeExact(segment(encoder), segment(fence), stages);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("MTLRenderCommandEncoder_updateFence", throwable);
+        }
+    }
+
+    public void MTLRenderCommandEncoder_waitForFence(final MemorySegment encoder, final MemorySegment fence, final long stages) {
+        try {
+            this.MTLRenderCommandEncoderWaitForFence.invokeExact(segment(encoder), segment(fence), stages);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("MTLRenderCommandEncoder_waitForFence", throwable);
+        }
+    }
+
+    public void MTLBlitCommandEncoder_updateFence(final MemorySegment encoder, final MemorySegment fence) {
+        try {
+            this.MTLBlitCommandEncoderUpdateFence.invokeExact(segment(encoder), segment(fence));
+        } catch (Throwable throwable) {
+            throw bridgeFailure("MTLBlitCommandEncoder_updateFence", throwable);
+        }
+    }
+
+    public void MTLBlitCommandEncoder_waitForFence(final MemorySegment encoder, final MemorySegment fence) {
+        try {
+            this.MTLBlitCommandEncoderWaitForFence.invokeExact(segment(encoder), segment(fence));
+        } catch (Throwable throwable) {
+            throw bridgeFailure("MTLBlitCommandEncoder_waitForFence", throwable);
         }
     }
 

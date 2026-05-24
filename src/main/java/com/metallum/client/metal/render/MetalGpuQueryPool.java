@@ -3,6 +3,7 @@ package com.metallum.client.metal.render;
 import com.mojang.blaze3d.systems.GpuQueryPool;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.jspecify.annotations.NonNull;
 
 import java.util.OptionalLong;
 
@@ -28,12 +29,12 @@ final class MetalGpuQueryPool implements GpuQueryPool {
     }
 
     @Override
-    public OptionalLong getValue(final int index) {
+    public @NonNull OptionalLong getValue(final int index) {
         return this.values[index];
     }
 
     @Override
-    public OptionalLong[] getValues(final int index, final int count) {
+    public OptionalLong @NonNull [] getValues(final int index, final int count) {
         OptionalLong[] result = new OptionalLong[count];
         System.arraycopy(this.values, index, result, 0, count);
         return result;

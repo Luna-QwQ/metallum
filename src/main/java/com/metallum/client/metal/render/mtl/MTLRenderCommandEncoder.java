@@ -25,16 +25,16 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setDepthBias(handle(), depthBias, slopeScale, clamp);
     }
 
-    public void setFrontFacingWinding(final int clockwise) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setFrontFacingWinding(handle(), clockwise);
+    public void setFrontFacingWinding(final MTLWinding winding) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setFrontFacingWinding(handle(), winding.value);
     }
 
-    public void setCullMode(final long cullMode) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setCullMode(handle(), cullMode);
+    public void setCullMode(final MTLCullMode cullMode) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setCullMode(handle(), cullMode.value);
     }
 
-    public void setTriangleFillMode(final int lines) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setTriangleFillMode(handle(), lines);
+    public void setTriangleFillMode(final MTLTriangleFillMode fillMode) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setTriangleFillMode(handle(), fillMode.value);
     }
 
     public void setVertexBuffer(final MemorySegment buffer, final long offset, final long index) {
@@ -79,5 +79,13 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
 
     public void drawIndexedPrimitivesTriangleFan(final MemorySegment indexBuffer, final MemorySegment fanIndexBuffer, final long indexType, final long offset, final int indexCount, final int baseVertex, final int instanceCount) {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(handle(), indexBuffer, fanIndexBuffer, indexType, offset, indexCount, baseVertex, instanceCount);
+    }
+
+    public void updateFence(final MemorySegment fence, final MTLRenderStages stages) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_updateFence(handle(), fence, stages.value);
+    }
+
+    public void waitForFence(final MemorySegment fence, final MTLRenderStages stages) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_waitForFence(handle(), fence, stages.value);
     }
 }

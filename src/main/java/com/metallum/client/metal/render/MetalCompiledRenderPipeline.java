@@ -2,6 +2,7 @@ package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.optimization.MetalTerrainVertexPacking;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLPixelFormat;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.CompiledRenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -230,7 +231,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
     }
 
     @Nullable
-    MemorySegment getOrCreateNativePipeline(final MetalDevice device, final long colorFormat, final long depthFormat, final long stencilFormat) {
+    MemorySegment getOrCreateNativePipeline(final MetalDevice device, final MTLPixelFormat colorFormat, final MTLPixelFormat depthFormat, final MTLPixelFormat stencilFormat) {
         PipelineVariantKey key = new PipelineVariantKey(colorFormat, depthFormat, stencilFormat);
         MemorySegment cached = this.nativePipelines.get(key);
         if (cached != null) {
@@ -245,9 +246,9 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
                 this.fragmentMsl,
                 this.vertexEntryPoint,
                 this.fragmentEntryPoint,
-                colorFormat,
-                depthFormat,
-                stencilFormat,
+                colorFormat.value,
+                depthFormat.value,
+                stencilFormat.value,
                 this.vertexAttributeFormats,
                 this.vertexAttributeOffsets,
                 this.vertexAttributeBufferSlots,
@@ -273,7 +274,8 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
         return created;
     }
 
-    private record PipelineVariantKey(long colorFormat, long depthFormat, long stencilFormat) {
+    private record PipelineVariantKey(MTLPixelFormat colorFormat, MTLPixelFormat depthFormat,
+                                      MTLPixelFormat stencilFormat) {
     }
 
     private record VertexInputState(

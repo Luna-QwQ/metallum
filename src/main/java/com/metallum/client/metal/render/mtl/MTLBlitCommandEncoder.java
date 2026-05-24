@@ -76,4 +76,12 @@ public final class MTLBlitCommandEncoder extends MTLCommandEncoder {
                 handle(), sourceTexture, destinationBuffer, destinationOffset, mipLevel, slice, x, y, width, height, bytesPerRow, bytesPerImage
         );
     }
+
+    public void updateFence(final MemorySegment fence) {
+        MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_updateFence(handle(), fence);
+    }
+
+    public void waitForFence(final MemorySegment fence) {
+        MetalNativeBridge.INSTANCE.MTLBlitCommandEncoder_waitForFence(handle(), fence);
+    }
 }

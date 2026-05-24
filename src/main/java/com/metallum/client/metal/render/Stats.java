@@ -70,16 +70,13 @@ public class Stats {
     public static void writeUsage(int usage, long allocatedSize) {
         UsageStats stats = USAGE_STATS.computeIfAbsent(usage, k -> new UsageStats());
 
-        StringBuilder sb = new StringBuilder();
-
-        sb.append("MetalGpuBuffer stats");
-
-        sb.append("  ")
-                .append(describeUsage(usage))
-                .append("  requested = ").append(formatBytes(allocatedSize));
+        String sb = "MetalGpuBuffer stats" +
+                "  " +
+                describeUsage(usage) +
+                "  requested = " + formatBytes(allocatedSize);
 
 
-        Metallum.LOGGER.info(sb.toString());
+        Metallum.LOGGER.info(sb);
     }
 
     private static String formatBytes(long bytes) {

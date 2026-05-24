@@ -1,6 +1,8 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLHazardTrackingMode;
+import com.metallum.client.metal.render.mtl.MTLStorageMode;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import net.fabricmc.api.EnvType;
@@ -14,7 +16,6 @@ import java.nio.ByteOrder;
 
 @Environment(EnvType.CLIENT)
 final class MetalGpuBuffer extends GpuBuffer {
-    private static final long MTL_RESOURCE_STORAGE_MODE_PRIVATE = 2L << 4;
     private final MetalDevice device;
     private final boolean cpuAccessible;
     private final long resourceOptions;
@@ -114,7 +115,9 @@ final class MetalGpuBuffer extends GpuBuffer {
         });
     }
 
-    public int getUsage() { return this.usage(); }
+    public int getUsage() {
+        return this.usage();
+    }
 
     private static boolean isCpuAccessible(@GpuBuffer.Usage final int usage) {
         return (usage & GpuBuffer.USAGE_MAP_READ) != 0
@@ -123,6 +126,7 @@ final class MetalGpuBuffer extends GpuBuffer {
     }
 
     private static long toMtlResourceOptions(@GpuBuffer.Usage final int usage) {
-        return isCpuAccessible(usage) ? 0L : MTL_RESOURCE_STORAGE_MODE_PRIVATE;
+        long options = isCpuAccessible(usage) ? 0L : MTLStorageMode.Private.value;
+        return options | MTLHazardTrackingMode.Untracked.value;
     }
 }

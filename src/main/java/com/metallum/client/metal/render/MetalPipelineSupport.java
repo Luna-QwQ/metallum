@@ -1,5 +1,6 @@
 package com.metallum.client.metal.render;
 
+import com.metallum.client.metal.render.mtl.MTLPixelFormat;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -39,46 +40,51 @@ final class MetalPipelineSupport {
         return names;
     }
 
-    static long texelBufferPixelFormatCode(final GpuFormat format) {
+    static MTLPixelFormat toMtlPixelFormat(final GpuFormat format) {
         return switch (format) {
-            case R8_UNORM -> 10L;
-            case R8_SNORM -> 12L;
-            case R8_UINT -> 13L;
-            case R8_SINT -> 14L;
-            case R16_UNORM -> 20L;
-            case R16_SNORM -> 22L;
-            case R16_UINT -> 23L;
-            case R16_SINT -> 24L;
-            case R16_FLOAT -> 25L;
-            case RG8_UNORM -> 30L;
-            case RG8_SNORM -> 32L;
-            case RG8_UINT -> 33L;
-            case RG8_SINT -> 34L;
-            case R32_UINT -> 53L;
-            case R32_SINT -> 54L;
-            case R32_FLOAT -> 55L;
-            case RG16_UNORM -> 60L;
-            case RG16_SNORM -> 62L;
-            case RG16_UINT -> 63L;
-            case RG16_SINT -> 64L;
-            case RG16_FLOAT -> 65L;
-            case RGBA8_UNORM -> 70L;
-            case RGBA8_SNORM -> 72L;
-            case RGBA8_UINT -> 73L;
-            case RGBA8_SINT -> 74L;
-            case RGB10A2_UNORM -> 90L;
-            case RG11B10_FLOAT -> 92L;
-            case RG32_UINT -> 103L;
-            case RG32_SINT -> 104L;
-            case RG32_FLOAT -> 105L;
-            case RGBA16_UNORM -> 110L;
-            case RGBA16_SNORM -> 112L;
-            case RGBA16_UINT -> 113L;
-            case RGBA16_SINT -> 114L;
-            case RGBA16_FLOAT -> 115L;
-            case RGBA32_UINT -> 123L;
-            case RGBA32_SINT -> 124L;
-            case RGBA32_FLOAT -> 125L;
+            case R8_UNORM -> MTLPixelFormat.R8Unorm;
+            case R8_SNORM -> MTLPixelFormat.R8Snorm;
+            case R8_UINT -> MTLPixelFormat.R8Uint;
+            case R8_SINT -> MTLPixelFormat.R8Sint;
+            case R16_UNORM -> MTLPixelFormat.R16Unorm;
+            case R16_SNORM -> MTLPixelFormat.R16Snorm;
+            case R16_UINT -> MTLPixelFormat.R16Uint;
+            case R16_SINT -> MTLPixelFormat.R16Sint;
+            case R16_FLOAT -> MTLPixelFormat.R16Float;
+            case RG8_UNORM -> MTLPixelFormat.RG8Unorm;
+            case RG8_SNORM -> MTLPixelFormat.RG8Snorm;
+            case RG8_UINT -> MTLPixelFormat.RG8Uint;
+            case RG8_SINT -> MTLPixelFormat.RG8Sint;
+            case R32_UINT -> MTLPixelFormat.R32Uint;
+            case R32_SINT -> MTLPixelFormat.R32Sint;
+            case R32_FLOAT -> MTLPixelFormat.R32Float;
+            case RG16_UNORM -> MTLPixelFormat.RG16Unorm;
+            case RG16_SNORM -> MTLPixelFormat.RG16Snorm;
+            case RG16_UINT -> MTLPixelFormat.RG16Uint;
+            case RG16_SINT -> MTLPixelFormat.RG16Sint;
+            case RG16_FLOAT -> MTLPixelFormat.RG16Float;
+            case RGBA8_UNORM -> MTLPixelFormat.RGBA8Unorm;
+            case RGBA8_SNORM -> MTLPixelFormat.RGBA8Snorm;
+            case RGBA8_UINT -> MTLPixelFormat.RGBA8Uint;
+            case RGBA8_SINT -> MTLPixelFormat.RGBA8Sint;
+            case RGB10A2_UNORM -> MTLPixelFormat.RGB10A2Unorm;
+            case RG11B10_FLOAT -> MTLPixelFormat.RG11B10Float;
+            case RG32_UINT -> MTLPixelFormat.RG32Uint;
+            case RG32_SINT -> MTLPixelFormat.RG32Sint;
+            case RG32_FLOAT -> MTLPixelFormat.RG32Float;
+            case RGBA16_UNORM -> MTLPixelFormat.RGBA16Unorm;
+            case RGBA16_SNORM -> MTLPixelFormat.RGBA16Snorm;
+            case RGBA16_UINT -> MTLPixelFormat.RGBA16Uint;
+            case RGBA16_SINT -> MTLPixelFormat.RGBA16Sint;
+            case RGBA16_FLOAT -> MTLPixelFormat.RGBA16Float;
+            case RGBA32_UINT -> MTLPixelFormat.RGBA32Uint;
+            case RGBA32_SINT -> MTLPixelFormat.RGBA32Sint;
+            case RGBA32_FLOAT -> MTLPixelFormat.RGBA32Float;
+            case D16_UNORM -> MTLPixelFormat.Depth16Unorm;
+            case D32_FLOAT -> MTLPixelFormat.Depth32Float;
+            case S8_UINT -> MTLPixelFormat.Stencil8;
+            case D24_UNORM_S8_UINT -> MTLPixelFormat.Depth24Unorm_Stencil8;
+            case D32_FLOAT_S8_UINT -> MTLPixelFormat.Depth32Float_Stencil8;
             default -> throw new IllegalStateException("Unsupported Metal texel buffer format: " + format);
         };
     }

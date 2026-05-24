@@ -1137,7 +1137,7 @@ public func metallum_create_texture_2d(
     descriptor.mipmapLevelCount = max(Int(mipLevels), 1)
     descriptor.usage = MTLTextureUsage(rawValue: UInt(usage))
     descriptor.storageMode = MTLStorageMode(rawValue: UInt(storageMode)) ?? .shared
-    descriptor.hazardTrackingMode = .tracked
+    descriptor.hazardTrackingMode = .untracked
     guard let texture = device.makeTexture(descriptor: descriptor) else {
         return nil
     }
@@ -1210,7 +1210,7 @@ public func metallum_create_buffer_texture_view(
         usage: MTLTextureUsage.shaderRead
     )
     descriptor.storageMode = buffer.storageMode
-    descriptor.hazardTrackingMode = .tracked
+    descriptor.hazardTrackingMode = .untracked
 
     guard let textureView = buffer.makeTexture(descriptor: descriptor, offset: nativeOffset, bytesPerRow: alignedBytesPerRow) else {
         return nil
@@ -1617,7 +1617,8 @@ public func metallum_MTLCommandBuffer_clearColorDepthTexturesRegion(
     _ x: Int32,
     _ y: Int32,
     _ width: Int32,
-    _ height: Int32
+    _ height: Int32,
+    _ globalFencePtr: UnsafeMutableRawPointer?
 ) {
     return withMetalAutoreleasePool {
     guard
@@ -1663,6 +1664,11 @@ public func metallum_MTLCommandBuffer_clearColorDepthTexturesRegion(
     guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPass) else {
         return
     }
+
+    if let globalFence: MTLFence = object(globalFencePtr) {
+        encoder.waitForFence(globalFence, before: .fragment)
+    }
+
     if !fullRegion {
         guard
             let pipeline = ensureClearColorDepthPipeline(commandBuffer.device, colorTexture.pixelFormat, depthTexture.pixelFormat),
@@ -1682,6 +1688,11 @@ public func metallum_MTLCommandBuffer_clearColorDepthTexturesRegion(
             clearDepth: clearDepth
         )
     }
+
+    if let globalFence: MTLFence = object(globalFencePtr) {
+        encoder.updateFence(globalFence, after: .fragment)
+    }
+
     encoder.endEncoding()
     }
 }
@@ -1782,7 +1793,8 @@ public func metallum_CAMetalLayer_nextDrawable(_ layerPtr: UnsafeMutableRawPoint
 public func metallum_MTLCommandBuffer_encodePresentTextureToDrawable(
     _ commandBufferPtr: UnsafeMutableRawPointer?,
     _ drawablePtr: UnsafeMutableRawPointer?,
-    _ sourceTexturePtr: UnsafeMutableRawPointer?
+    _ sourceTexturePtr: UnsafeMutableRawPointer?,
+    _ globalFencePtr: UnsafeMutableRawPointer?
 ) {
     return withMetalAutoreleasePool {
         guard
@@ -1804,6 +1816,10 @@ public func metallum_MTLCommandBuffer_encodePresentTextureToDrawable(
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPass) else {
             return
+        }
+
+        if let globalFence: MTLFence = object(globalFencePtr) {
+            encoder.waitForFence(globalFence, before: .fragment)
         }
 
         encoder.setViewport(MTLViewport(
@@ -1836,6 +1852,68 @@ public func metallum_MTLCommandBuffer_encodePresentTextureToDrawable(
         )
 
         encoder.endEncoding()
+    }
+}
+
+@_cdecl("metallum_create_fence")
+public func metallum_create_fence(_ devicePtr: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
+    return withMetalAutoreleasePool {
+        guard let device: MTLDevice = object(devicePtr) else { return nil }
+        return retainedPointer(device.makeFence())
+    }
+}
+
+@_cdecl("MTLRenderCommandEncoder_updateFence")
+public func MTLRenderCommandEncoder_updateFence(
+    _ encoderPtr: UnsafeMutableRawPointer?,
+    _ fencePtr: UnsafeMutableRawPointer?,
+    _ stages: UInt64
+) {
+    withMetalAutoreleasePool {
+        guard let encoder: MTLRenderCommandEncoder = object(encoderPtr),
+              let fence: MTLFence = object(fencePtr)
+        else { return }
+        encoder.updateFence(fence, after: MTLRenderStages(rawValue: UInt(stages)))
+    }
+}
+
+@_cdecl("MTLRenderCommandEncoder_waitForFence")
+public func MTLRenderCommandEncoder_waitForFence(
+    _ encoderPtr: UnsafeMutableRawPointer?,
+    _ fencePtr: UnsafeMutableRawPointer?,
+    _ stages: UInt64
+) {
+    withMetalAutoreleasePool {
+        guard let encoder: MTLRenderCommandEncoder = object(encoderPtr),
+              let fence: MTLFence = object(fencePtr)
+        else { return }
+        encoder.waitForFence(fence, before: MTLRenderStages(rawValue: UInt(stages)))
+    }
+}
+
+@_cdecl("MTLBlitCommandEncoder_updateFence")
+public func MTLBlitCommandEncoder_updateFence(
+    _ encoderPtr: UnsafeMutableRawPointer?,
+    _ fencePtr: UnsafeMutableRawPointer?
+) {
+    withMetalAutoreleasePool {
+        guard let encoder: MTLBlitCommandEncoder = object(encoderPtr),
+              let fence: MTLFence = object(fencePtr)
+        else { return }
+        encoder.updateFence(fence)
+    }
+}
+
+@_cdecl("MTLBlitCommandEncoder_waitForFence")
+public func MTLBlitCommandEncoder_waitForFence(
+    _ encoderPtr: UnsafeMutableRawPointer?,
+    _ fencePtr: UnsafeMutableRawPointer?
+) {
+    withMetalAutoreleasePool {
+        guard let encoder: MTLBlitCommandEncoder = object(encoderPtr),
+              let fence: MTLFence = object(fencePtr)
+        else { return }
+        encoder.waitForFence(fence)
     }
 }
 
