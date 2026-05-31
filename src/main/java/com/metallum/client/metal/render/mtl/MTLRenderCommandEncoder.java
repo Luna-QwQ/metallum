@@ -37,40 +37,28 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setTriangleFillMode(handle(), fillMode.value);
     }
 
-    public void setVertexBuffer(final MemorySegment buffer, final long offset, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setVertexBuffer(handle(), buffer, offset, index);
+    public void setBuffer(final MemorySegment buffer, final long offset, final long index, final int stageMask) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setBuffer(handle(), buffer, offset, index, stageMask);
     }
 
-    public void setFragmentBuffer(final MemorySegment buffer, final long offset, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setFragmentBuffer(handle(), buffer, offset, index);
+    public void setTexture(final MemorySegment texture, final long index, final int stageMask) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setTexture(handle(), texture, index, stageMask);
     }
 
-    public void setVertexTexture(final MemorySegment texture, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setVertexTexture(handle(), texture, index);
-    }
-
-    public void setFragmentTexture(final MemorySegment texture, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setFragmentTexture(handle(), texture, index);
-    }
-
-    public void setVertexSamplerState(final MemorySegment sampler, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setVertexSamplerState(handle(), sampler, index);
-    }
-
-    public void setFragmentSamplerState(final MemorySegment sampler, final long index) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setFragmentSamplerState(handle(), sampler, index);
+    public void setTextureAndSampler(final MemorySegment texture, final MemorySegment sampler, final long index, final int stageMask) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setTextureAndSampler(handle(), texture, sampler, index, stageMask);
     }
 
     public void setScissorRect(final long x, final long y, final long width, final long height) {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setScissorRect(handle(), x, y, width, height);
     }
 
-    public void drawPrimitives(final long primitiveType, final int firstVertex, final int vertexCount, final int instanceCount) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_drawPrimitives(handle(), primitiveType, firstVertex, vertexCount, instanceCount);
+    public void drawPrimitives(final MTLPrimitiveType primitiveType, final int firstVertex, final int vertexCount, final int instanceCount) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_drawPrimitives(handle(), primitiveType.value, firstVertex, vertexCount, instanceCount);
     }
 
-    public void drawIndexedPrimitives(final long primitiveType, final int indexCount, final long indexType, final MemorySegment indexBuffer, final long offset, final int instanceCount, final int baseVertex) {
-        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_drawIndexedPrimitives(handle(), primitiveType, indexCount, indexType, indexBuffer, offset, instanceCount, baseVertex);
+    public void drawIndexedPrimitives(final MTLPrimitiveType primitiveType, final int indexCount, final long indexType, final MemorySegment indexBuffer, final long offset, final int instanceCount, final int baseVertex) {
+        MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_drawIndexedPrimitives(handle(), primitiveType.value, indexCount, indexType, indexBuffer, offset, instanceCount, baseVertex);
     }
 
     public void drawPrimitivesTriangleFan(final MemorySegment fanIndexBuffer, final int firstVertex, final int vertexCount, final int instanceCount) {

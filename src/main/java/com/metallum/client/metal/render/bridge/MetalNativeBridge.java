@@ -1,5 +1,6 @@
 package com.metallum.client.metal.render.bridge;
 
+import com.metallum.client.metal.render.mtl.MTLStorageMode;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.Nullable;
@@ -53,12 +54,9 @@ public final class MetalNativeBridge {
     private final MethodHandle MTLRenderCommandEncoderSetFrontFacingWinding;
     private final MethodHandle MTLRenderCommandEncoderSetCullMode;
     private final MethodHandle MTLRenderCommandEncoderSetTriangleFillMode;
-    private final MethodHandle MTLRenderCommandEncoderSetVertexBuffer;
-    private final MethodHandle MTLRenderCommandEncoderSetFragmentBuffer;
-    private final MethodHandle MTLRenderCommandEncoderSetVertexTexture;
-    private final MethodHandle MTLRenderCommandEncoderSetFragmentTexture;
-    private final MethodHandle MTLRenderCommandEncoderSetVertexSamplerState;
-    private final MethodHandle MTLRenderCommandEncoderSetFragmentSamplerState;
+    private final MethodHandle MTLRenderCommandEncoderSetBuffer;
+    private final MethodHandle MTLRenderCommandEncoderSetTexture;
+    private final MethodHandle MTLRenderCommandEncoderSetTextureAndSampler;
     private final MethodHandle MTLRenderCommandEncoderSetScissorRect;
     private final MethodHandle MTLRenderCommandEncoderDrawPrimitives;
     private final MethodHandle MTLRenderCommandEncoderDrawIndexedPrimitives;
@@ -149,12 +147,9 @@ public final class MetalNativeBridge {
         this.MTLRenderCommandEncoderSetFrontFacingWinding = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFrontFacingWinding", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
         this.MTLRenderCommandEncoderSetCullMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setCullMode", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG));
         this.MTLRenderCommandEncoderSetTriangleFillMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTriangleFillMode", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        this.MTLRenderCommandEncoderSetVertexBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexBuffer", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
-        this.MTLRenderCommandEncoderSetFragmentBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentBuffer", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG));
-        this.MTLRenderCommandEncoderSetVertexTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexTexture", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
-        this.MTLRenderCommandEncoderSetFragmentTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentTexture", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
-        this.MTLRenderCommandEncoderSetVertexSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setVertexSamplerState", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
-        this.MTLRenderCommandEncoderSetFragmentSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFragmentSamplerState", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
+        this.MTLRenderCommandEncoderSetBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBuffer", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
+        this.MTLRenderCommandEncoderSetTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTexture", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
+        this.MTLRenderCommandEncoderSetTextureAndSampler = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTextureAndSampler", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
         this.MTLRenderCommandEncoderSetScissorRect = downcall(lookup, "metallum_MTLRenderCommandEncoder_setScissorRect", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
         this.MTLRenderCommandEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
         this.MTLRenderCommandEncoderDrawIndexedPrimitives = downcall(
@@ -716,51 +711,27 @@ public final class MetalNativeBridge {
         }
     }
 
-    public void MTLRenderCommandEncoder_setVertexBuffer(final MemorySegment encoder, final MemorySegment buffer, final long offset, final long index) {
+    public void MTLRenderCommandEncoder_setBuffer(final MemorySegment encoder, final MemorySegment buffer, final long offset, final long index, final int stageMask) {
         try {
-            this.MTLRenderCommandEncoderSetVertexBuffer.invokeExact(segment(encoder), segment(buffer), offset, index);
+            this.MTLRenderCommandEncoderSetBuffer.invokeExact(segment(encoder), segment(buffer), offset, index, stageMask);
         } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexBuffer", throwable);
+            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setBuffer", throwable);
         }
     }
 
-    public void MTLRenderCommandEncoder_setFragmentBuffer(final MemorySegment encoder, final MemorySegment buffer, final long offset, final long index) {
+    public void MTLRenderCommandEncoder_setTexture(final MemorySegment encoder, final MemorySegment texture, final long index, final int stageMask) {
         try {
-            this.MTLRenderCommandEncoderSetFragmentBuffer.invokeExact(segment(encoder), segment(buffer), offset, index);
+            this.MTLRenderCommandEncoderSetTexture.invokeExact(segment(encoder), segment(texture), index, stageMask);
         } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentBuffer", throwable);
+            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setTexture", throwable);
         }
     }
 
-    public void MTLRenderCommandEncoder_setVertexTexture(final MemorySegment encoder, final MemorySegment texture, final long index) {
+    public void MTLRenderCommandEncoder_setTextureAndSampler(final MemorySegment encoder, final MemorySegment texture, final MemorySegment sampler, final long index, final int stageMask) {
         try {
-            this.MTLRenderCommandEncoderSetVertexTexture.invokeExact(segment(encoder), segment(texture), index);
+            this.MTLRenderCommandEncoderSetTextureAndSampler.invokeExact(segment(encoder), segment(texture), segment(sampler), index, stageMask);
         } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexTexture", throwable);
-        }
-    }
-
-    public void MTLRenderCommandEncoder_setFragmentTexture(final MemorySegment encoder, final MemorySegment texture, final long index) {
-        try {
-            this.MTLRenderCommandEncoderSetFragmentTexture.invokeExact(segment(encoder), segment(texture), index);
-        } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentTexture", throwable);
-        }
-    }
-
-    public void MTLRenderCommandEncoder_setVertexSamplerState(final MemorySegment encoder, final MemorySegment sampler, final long index) {
-        try {
-            this.MTLRenderCommandEncoderSetVertexSamplerState.invokeExact(segment(encoder), segment(sampler), index);
-        } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setVertexSamplerState", throwable);
-        }
-    }
-
-    public void MTLRenderCommandEncoder_setFragmentSamplerState(final MemorySegment encoder, final MemorySegment sampler, final long index) {
-        try {
-            this.MTLRenderCommandEncoderSetFragmentSamplerState.invokeExact(segment(encoder), segment(sampler), index);
-        } catch (Throwable throwable) {
-            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setFragmentSamplerState", throwable);
+            throw bridgeFailure("metallum_MTLRenderCommandEncoder_setTextureAndSampler", throwable);
         }
     }
 

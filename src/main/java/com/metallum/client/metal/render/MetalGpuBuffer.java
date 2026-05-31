@@ -3,6 +3,7 @@ package com.metallum.client.metal.render;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.MTLHazardTrackingMode;
 import com.metallum.client.metal.render.mtl.MTLStorageMode;
+import com.metallum.client.metal.render.mtl.MTLResourceOptions;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import net.fabricmc.api.EnvType;
@@ -136,7 +137,7 @@ class MetalGpuBuffer extends GpuBuffer {
     }
 
     private static long toMtlResourceOptions(@GpuBuffer.Usage final int usage) {
-        long options = isCpuAccessible(usage) ? 0L : MTLStorageMode.Private.value;
-        return options | MTLHazardTrackingMode.Untracked.value;
+        MTLStorageMode storageMode = isCpuAccessible(usage) ? MTLStorageMode.Shared : MTLStorageMode.Private;
+        return MTLResourceOptions.of(storageMode, MTLHazardTrackingMode.Untracked);
     }
 }

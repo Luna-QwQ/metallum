@@ -3,6 +3,7 @@ package com.metallum.client.metal.render;
 import com.metallum.client.metal.optimization.MetalTerrainVertexPacking;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.MTLPixelFormat;
+import com.metallum.client.metal.render.mtl.MTLVertexFormat;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.CompiledRenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -57,6 +58,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
     private final double depthBiasScaleFactor;
     private final double depthBiasConstant;
     private final Map<PipelineVariantKey, MemorySegment> nativePipelines = new ConcurrentHashMap<>();
+    private MemorySegment depthStencilState = MemorySegment.NULL;
 
     MetalCompiledRenderPipeline(
             final RenderPipeline info,
@@ -117,20 +119,29 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
         return binding >= 0 && binding < this.metalSlotByVertexBinding.length ? this.metalSlotByVertexBinding[binding] : -1;
     }
 
-    long depthCompareOp() {
-        return this.depthCompareOp;
-    }
-
-    int depthWrite() {
-        return this.depthWrite;
-    }
-
     double depthBiasScaleFactor() {
         return this.depthBiasScaleFactor;
     }
 
     double depthBiasConstant() {
         return this.depthBiasConstant;
+    }
+
+    @Nullable
+    MemorySegment getOrCreateDepthStencilState(final MetalDevice device) {
+        if (!MetalNativeBridge.isNullHandle(this.depthStencilState)) {
+            return this.depthStencilState;
+        }
+        MemorySegment created = MetalNativeBridge.INSTANCE.MTLDevice_makeDepthStencilState(
+                device.metalDeviceHandle(),
+                this.depthCompareOp,
+                this.depthWrite
+        );
+        if (MetalNativeBridge.isNullHandle(created)) {
+            return null;
+        }
+        this.depthStencilState = created;
+        return created;
     }
 
     private static VertexInputState buildVertexInputState(final RenderPipeline pipeline, final int firstMetalVertexBufferSlot) {
@@ -212,11 +223,11 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
             final int metalSlot
     ) {
         for (VertexFormatElement element : binding.getElements()) {
-            long formatCode = MetalPipelineSupport.vertexAttributeFormatCode(element.format());
-            if (formatCode == 0L) {
+            MTLVertexFormat format = MetalPipelineSupport.vertexAttributeFormat(element.format());
+            if (format.value == MTLVertexFormat.Invalid.value) {
                 throw new IllegalStateException("Unsupported vertex attribute format: " + element.format());
             }
-            attributeFormats.add(formatCode);
+            attributeFormats.add(format.value);
             attributeOffsets.add((long) element.offset());
             attributeBufferSlots.add((long) metalSlot);
         }
@@ -231,7 +242,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
     }
 
     @Nullable
-    MemorySegment getOrCreateNativePipeline(final MetalDevice device, final MTLPixelFormat colorFormat, final MTLPixelFormat depthFormat, final MTLPixelFormat stencilFormat) {
+    MemorySegment getOrCreateNativePipeline(final MetalDevice device, final long colorFormat, final long depthFormat, final long stencilFormat) {
         PipelineVariantKey key = new PipelineVariantKey(colorFormat, depthFormat, stencilFormat);
         MemorySegment cached = this.nativePipelines.get(key);
         if (cached != null) {
@@ -245,10 +256,10 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
                 this.vertexMsl,
                 this.fragmentMsl,
                 this.vertexEntryPoint,
-                this.fragmentEntryPoint,
-                colorFormat.value,
-                depthFormat.value,
-                stencilFormat.value,
+                 this.fragmentEntryPoint,
+                colorFormat,
+                depthFormat,
+                stencilFormat,
                 this.vertexAttributeFormats,
                 this.vertexAttributeOffsets,
                 this.vertexAttributeBufferSlots,
@@ -258,11 +269,11 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
                 this.vertexBindingStepRates,
                 this.vertexBindingBufferSlots.length,
                 blendFunction.isPresent() ? 1 : 0,
-                blendFunction.map(function -> MetalPipelineSupport.toBlendFactorCode(function.color().sourceFactor())).orElse(0L),
-                blendFunction.map(value -> MetalPipelineSupport.toBlendFactorCode(value.color().destFactor())).orElse(0L),
+                blendFunction.map(function -> MetalPipelineSupport.toBlendFactorCode(function.color().sourceFactor()).value).orElse(0L),
+                blendFunction.map(value -> MetalPipelineSupport.toBlendFactorCode(value.color().destFactor()).value).orElse(0L),
                 blendFunction.map(blendFunction1 -> MetalPipelineSupport.toBlendOpCode(blendFunction1.color().op())).orElse(0L),
-                blendFunction.map(blendFunction2 -> MetalPipelineSupport.toBlendFactorCode(blendFunction2.alpha().sourceFactor())).orElse(0L),
-                blendFunction.map(blendFunction3 -> MetalPipelineSupport.toBlendFactorCode(blendFunction3.alpha().destFactor())).orElse(0L),
+                blendFunction.map(blendFunction2 -> MetalPipelineSupport.toBlendFactorCode(blendFunction2.alpha().sourceFactor()).value).orElse(0L),
+                blendFunction.map(blendFunction3 -> MetalPipelineSupport.toBlendFactorCode(blendFunction3.alpha().destFactor()).value).orElse(0L),
                 blendFunction.map(blendFunction4 -> MetalPipelineSupport.toBlendOpCode(blendFunction4.alpha().op())).orElse(0L),
                 colorTarget.writeMask()
         );
@@ -274,8 +285,8 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline {
         return created;
     }
 
-    private record PipelineVariantKey(MTLPixelFormat colorFormat, MTLPixelFormat depthFormat,
-                                      MTLPixelFormat stencilFormat) {
+    private record PipelineVariantKey(long colorFormat, long depthFormat,
+                                      long stencilFormat) {
     }
 
     private record VertexInputState(

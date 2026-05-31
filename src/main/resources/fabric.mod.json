@@ -8,10 +8,10 @@
     "kokodio"
   ],
   "contact": {
-    "homepage": "https://fabricmc.net/",
-    "sources": "https://github.com/FabricMC/fabric-example-mod"
+    "homepage": "https://github.com/kokodio/metallum",
+    "sources": "https://github.com/kokodio/metallum"
   },
-  "license": "CC0-1.0",
+  "license": "MIT",
   "icon": "assets/metallum/icon.png",
   "environment": "*",
   "entrypoints": {

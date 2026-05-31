@@ -62,7 +62,8 @@ final class MetalRenderPass implements RenderPassBackend {
     private IndexType indexType = IndexType.SHORT;
     private MemorySegment nativePipeline = MemorySegment.NULL;
     private int pushedDebugGroups = 0;
-    private boolean stateDirty = true;
+    private boolean scissorDirty = true;
+    private boolean vertexBuffersDirty = true;
 
     MetalRenderPass(
             final MetalDevice device,
@@ -108,7 +109,7 @@ final class MetalRenderPass implements RenderPassBackend {
     @Override
     public void setPipeline(final @NonNull RenderPipeline pipeline) {
         if (this.pipeline != pipeline) {
-            stateDirty = true;
+            vertexBuffersDirty = true;
             nativePipeline = MemorySegment.NULL;
         }
 
@@ -151,7 +152,7 @@ final class MetalRenderPass implements RenderPassBackend {
             return;
         }
         scissorState.enable(x, y, width, height);
-        stateDirty = true;
+        scissorDirty = true;
     }
 
     @Override
@@ -160,7 +161,7 @@ final class MetalRenderPass implements RenderPassBackend {
             return;
         }
         scissorState.disable();
-        stateDirty = true;
+        scissorDirty = true;
     }
 
     @Override
@@ -171,7 +172,7 @@ final class MetalRenderPass implements RenderPassBackend {
 
         if (!sameSlice(vertexBuffers[slot], vertexBuffer)) {
             vertexBuffers[slot] = vertexBuffer;
-            stateDirty = true;
+            vertexBuffersDirty = true;
         }
     }
 
@@ -229,7 +230,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 draw.uniformUploaderConsumer().accept(uniformArgument, this::setUniform);
             }
 
-            if (stateDirty || !dirtyDescriptors.isEmpty() || MetalNativeBridge.isNullHandle(nativePipeline)) {
+            if (scissorDirty || vertexBuffersDirty || !dirtyDescriptors.isEmpty() || MetalNativeBridge.isNullHandle(nativePipeline)) {
                 bindDrawState(enc);
             }
             MetalGpuBuffer nativeIndexBuffer = resolveIndexBuffer();
@@ -250,16 +251,13 @@ final class MetalRenderPass implements RenderPassBackend {
     @Override
     public void draw(final int vertexCount, final int instanceCount, final int firstVertex, final int firstInstance) {
         PrimitiveTopology primitiveTopology = primitiveTopology();
-        long primitiveType = MetalPipelineSupport.primitiveTypeCode(primitiveTopology);
-        if (primitiveType < 0L) {
-            throw new IllegalStateException("Unsupported primitive type: " + primitiveTopology);
-        }
+        MTLPrimitiveType primitiveType = MetalPipelineSupport.primitiveTypeCode(primitiveTopology);
 
         MTLRenderCommandEncoder enc = renderEncoder();
 
         bindDrawState(enc);
 
-        if (primitiveType == MetalPipelineSupport.TRIANGLE_FAN_PRIMITIVE) {
+        if (primitiveType.value == MetalPipelineSupport.TRIANGLE_FAN_PRIMITIVE) {
             try (MetalGpuBuffer fanIndexBuffer = newTriangleFanBuffer(vertexCount)) {
                 enc.drawPrimitivesTriangleFan(fanIndexBuffer.nativeHandle(), firstVertex, vertexCount, Math.max(1, instanceCount));
             }
@@ -346,7 +344,7 @@ final class MetalRenderPass implements RenderPassBackend {
             }
 
             MetalGpuBuffer nativeVertexBuffer = MetalCommandEncoder.castBuffer(vertexBuffer.buffer());
-            enc.setVertexBuffer(nativeVertexBuffer.nativeHandle(), vertexBuffer.offset(), metalSlot);
+            enc.setBuffer(nativeVertexBuffer.nativeHandle(), vertexBuffer.offset(), metalSlot, MetalCompiledRenderPipeline.STAGE_VERTEX);
         }
     }
 
@@ -370,15 +368,12 @@ final class MetalRenderPass implements RenderPassBackend {
             final IndexType indexType
     ) {
         PrimitiveTopology primitiveTopology = primitiveTopology();
-        long primitiveType = MetalPipelineSupport.primitiveTypeCode(primitiveTopology);
-        if (primitiveType < 0L) {
-            throw new IllegalStateException("Unsupported primitive type: " + primitiveTopology);
-        }
+        MTLPrimitiveType primitiveType = MetalPipelineSupport.primitiveTypeCode(primitiveTopology);
 
         int safeInstanceCount = Math.max(1, instanceCount);
         long indexOffsetBytes = (long) firstIndex * indexType.bytes;
         long nativeIndexType = indexType == IndexType.INT ? 1L : 0L;
-        if (primitiveType == MetalPipelineSupport.TRIANGLE_FAN_PRIMITIVE)
+        if (primitiveType.value == MetalPipelineSupport.TRIANGLE_FAN_PRIMITIVE)
             try (MetalGpuBuffer fanIndexBuffer = newTriangleFanBuffer(indexCount)) {
                 enc.drawIndexedPrimitivesTriangleFan(
                         nativeIndexBuffer.nativeHandle(),
@@ -416,9 +411,9 @@ final class MetalRenderPass implements RenderPassBackend {
         if (MetalNativeBridge.isNullHandle(nativePipeline)) {
             MemorySegment pipelineHandle = compiledPipeline.getOrCreateNativePipeline(
                     device,
-                    colorAttachmentFormat(),
-                    depthAttachmentFormat(),
-                    stencilAttachmentFormat()
+                    colorAttachmentFormat().value,
+                    depthAttachmentFormat().value,
+                    stencilAttachmentFormat().value
             );
             if (MetalNativeBridge.isNullHandle(pipelineHandle)) {
                 throw new IllegalStateException("Native pipeline is unavailable");
@@ -426,12 +421,8 @@ final class MetalRenderPass implements RenderPassBackend {
             enc.setRenderPipelineState(pipelineHandle);
             nativePipeline = pipelineHandle;
 
-            if (depthAttachmentFormat() != MTLPixelFormat.Invalid) {
-                MemorySegment depthState = MetalNativeBridge.INSTANCE.MTLDevice_makeDepthStencilState(
-                        device.metalDeviceHandle(),
-                        compiledPipeline.depthCompareOp(),
-                        compiledPipeline.depthWrite()
-                );
+            if (depthAttachmentFormat().value != MTLPixelFormat.Invalid.value) {
+                MemorySegment depthState = compiledPipeline.getOrCreateDepthStencilState(device);
                 if (MetalNativeBridge.isNullHandle(depthState)) {
                     throw new IllegalStateException("Native depth state is unavailable");
                 }
@@ -451,11 +442,14 @@ final class MetalRenderPass implements RenderPassBackend {
             pipelineChanged = true;
         }
 
-        if (stateDirty) {
+        if (scissorDirty) {
             pushEffectiveScissor(enc);
-            pushVertexBuffers(enc);
+            scissorDirty = false;
+        }
 
-            stateDirty = false;
+        if (vertexBuffersDirty) {
+            pushVertexBuffers(enc);
+            vertexBuffersDirty = false;
         }
 
         if (pipelineChanged) {
@@ -529,16 +523,7 @@ final class MetalRenderPass implements RenderPassBackend {
             MetalGpuTextureView textureView = (MetalGpuTextureView) textureBinding.textureView();
 
             MetalGpuSampler sampler = (MetalGpuSampler) textureBinding.sampler();
-            if ((binding.stageMask() & 1) != 0) {
-                enc.setVertexTexture(textureView.nativeHandle(), binding.bindingIndex());
-                enc.setVertexSamplerState(sampler.nativeHandle(), binding.bindingIndex());
-
-            }
-            if ((binding.stageMask() & 2) != 0) {
-                enc.setFragmentTexture(textureView.nativeHandle(), binding.bindingIndex());
-                enc.setFragmentSamplerState(sampler.nativeHandle(), binding.bindingIndex());
-
-            }
+            enc.setTextureAndSampler(textureView.nativeHandle(), sampler.nativeHandle(), binding.bindingIndex(), binding.stageMask());
 
             return;
         }
@@ -557,12 +542,7 @@ final class MetalRenderPass implements RenderPassBackend {
         }
 
         MetalGpuBuffer uniformBuffer = MetalCommandEncoder.castBuffer(uniformSlice.buffer());
-        if ((binding.stageMask() & 1) != 0) {
-            enc.setVertexBuffer(uniformBuffer.nativeHandle(), uniformSlice.offset(), binding.bindingIndex());
-        }
-        if ((binding.stageMask() & 2) != 0) {
-            enc.setFragmentBuffer(uniformBuffer.nativeHandle(), uniformSlice.offset(), binding.bindingIndex());
-        }
+        enc.setBuffer(uniformBuffer.nativeHandle(), uniformSlice.offset(), binding.bindingIndex(), binding.stageMask());
     }
 
     private void pushTexelBufferDescriptor(final MTLRenderCommandEncoder enc, final MetalCompiledRenderPipeline.ResourceBinding binding) {
@@ -580,7 +560,7 @@ final class MetalRenderPass implements RenderPassBackend {
         }
 
         MetalGpuBuffer texelBuffer = MetalCommandEncoder.castBuffer(texelSlice.buffer());
-        MTLPixelFormat pixelFormat = MetalPipelineSupport.toMtlPixelFormat(texelFormat);
+        long pixelFormat = MetalPipelineSupport.toMtlPixelFormat(texelFormat).value;
         int pixelSize = texelFormat.pixelSize();
         long texelByteLength = texelSlice.length();
         if (texelByteLength <= 0L || texelByteLength % pixelSize != 0L) {
@@ -589,7 +569,7 @@ final class MetalRenderPass implements RenderPassBackend {
         long texelCount = texelByteLength / pixelSize;
         MemorySegment texelTexture = MetalNativeBridge.INSTANCE.metallum_create_buffer_texture_view(
                 texelBuffer.nativeHandle(),
-                pixelFormat.value,
+                pixelFormat,
                 texelSlice.offset(),
                 texelCount,
                 1L,
@@ -599,12 +579,7 @@ final class MetalRenderPass implements RenderPassBackend {
             throw new IllegalStateException("Failed to create Metal texel buffer texture for " + binding.name());
         }
 
-        if ((binding.stageMask() & 1) != 0) {
-            enc.setVertexTexture(texelTexture, binding.bindingIndex());
-        }
-        if ((binding.stageMask() & 2) != 0) {
-            enc.setFragmentTexture(texelTexture, binding.bindingIndex());
-        }
+        enc.setTexture(texelTexture, binding.bindingIndex(), binding.stageMask());
 
         commandEncoder.queueForDestroy(() -> MetalNativeBridge.INSTANCE.metallum_release_object(texelTexture));
     }

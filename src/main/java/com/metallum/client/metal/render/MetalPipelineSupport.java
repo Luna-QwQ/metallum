@@ -1,6 +1,9 @@
 package com.metallum.client.metal.render;
 
+import com.metallum.client.metal.render.mtl.MTLBlendFactor;
 import com.metallum.client.metal.render.mtl.MTLPixelFormat;
+import com.metallum.client.metal.render.mtl.MTLPrimitiveType;
+import com.metallum.client.metal.render.mtl.MTLVertexFormat;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -16,9 +19,6 @@ import java.util.List;
 
 @Environment(EnvType.CLIENT)
 final class MetalPipelineSupport {
-    static final long TRIANGLE_PRIMITIVE = 0L;
-    static final long TRIANGLE_FAN_PRIMITIVE = 5L;
-
     private MetalPipelineSupport() {
     }
 
@@ -89,35 +89,37 @@ final class MetalPipelineSupport {
         };
     }
 
-    static long primitiveTypeCode(final PrimitiveTopology mode) {
+    public static final long TRIANGLE_PRIMITIVE = 3L;
+    public static final long TRIANGLE_FAN_PRIMITIVE = 5L;
+
+    static MTLPrimitiveType primitiveTypeCode(final PrimitiveTopology mode) {
         return switch (mode) {
-            case TRIANGLES, QUADS, LINES -> TRIANGLE_PRIMITIVE;
-            case TRIANGLE_STRIP -> 1L;
-            case TRIANGLE_FAN -> TRIANGLE_FAN_PRIMITIVE;
-            case DEBUG_LINES -> 2L;
-            case DEBUG_LINE_STRIP -> 3L;
-            case POINTS -> 4L;
-            default -> -1L;
+            case TRIANGLES, QUADS, LINES -> MTLPrimitiveType.Triangle;
+            case TRIANGLE_STRIP -> MTLPrimitiveType.TriangleStrip;
+            case DEBUG_LINES -> MTLPrimitiveType.Line;
+            case DEBUG_LINE_STRIP -> MTLPrimitiveType.LineStrip;
+            case POINTS -> MTLPrimitiveType.Point;
+            case TRIANGLE_FAN -> MTLPrimitiveType.TriangleFan;
         };
     }
 
-    static long toBlendFactorCode(final com.mojang.blaze3d.platform.BlendFactor factor) {
+    static MTLBlendFactor toBlendFactorCode(final com.mojang.blaze3d.platform.BlendFactor factor) {
         return switch (factor) {
-            case ZERO -> 0L;
-            case ONE -> 1L;
-            case SRC_COLOR -> 2L;
-            case ONE_MINUS_SRC_COLOR -> 3L;
-            case SRC_ALPHA -> 4L;
-            case ONE_MINUS_SRC_ALPHA -> 5L;
-            case DST_COLOR -> 6L;
-            case ONE_MINUS_DST_COLOR -> 7L;
-            case DST_ALPHA -> 8L;
-            case ONE_MINUS_DST_ALPHA -> 9L;
-            case SRC_ALPHA_SATURATE -> 10L;
-            case CONSTANT_COLOR -> 11L;
-            case ONE_MINUS_CONSTANT_COLOR -> 12L;
-            case CONSTANT_ALPHA -> 13L;
-            case ONE_MINUS_CONSTANT_ALPHA -> 14L;
+            case ZERO -> MTLBlendFactor.Zero;
+            case ONE -> MTLBlendFactor.One;
+            case SRC_COLOR -> MTLBlendFactor.SourceColor;
+            case ONE_MINUS_SRC_COLOR -> MTLBlendFactor.OneMinusSourceColor;
+            case SRC_ALPHA -> MTLBlendFactor.SourceAlpha;
+            case ONE_MINUS_SRC_ALPHA -> MTLBlendFactor.OneMinusSourceAlpha;
+            case DST_COLOR -> MTLBlendFactor.DestinationColor;
+            case ONE_MINUS_DST_COLOR -> MTLBlendFactor.OneMinusDestinationColor;
+            case DST_ALPHA -> MTLBlendFactor.DestinationAlpha;
+            case ONE_MINUS_DST_ALPHA -> MTLBlendFactor.OneMinusDestinationAlpha;
+            case SRC_ALPHA_SATURATE -> MTLBlendFactor.SourceAlphaSaturated;
+            case CONSTANT_COLOR -> MTLBlendFactor.BlendColor;
+            case ONE_MINUS_CONSTANT_COLOR -> MTLBlendFactor.OneMinusBlendColor;
+            case CONSTANT_ALPHA -> MTLBlendFactor.BlendAlpha;
+            case ONE_MINUS_CONSTANT_ALPHA -> MTLBlendFactor.OneMinusBlendAlpha;
         };
     }
 
@@ -144,45 +146,45 @@ final class MetalPipelineSupport {
         };
     }
 
-    static long vertexAttributeFormatCode(final GpuFormat format) {
+    static MTLVertexFormat vertexAttributeFormat(final GpuFormat format) {
         return switch (format) {
-            case R32_FLOAT -> 1L;
-            case RG32_FLOAT -> 2L;
-            case RGB32_FLOAT -> 3L;
-            case RGBA32_FLOAT -> 4L;
-            case RGBA8_UNORM -> 5L;
-            case RGBA8_UINT -> 6L;
-            case RG16_UINT -> 7L;
-            case RG16_UNORM -> 8L;
-            case RG16_SINT -> 9L;
-            case RG16_SNORM -> 10L;
-            case RGBA16_UINT -> 11L;
-            case RGBA16_SINT -> 12L;
-            case RGBA16_UNORM -> 13L;
-            case RGBA16_SNORM -> 14L;
-            case R32_UINT -> 15L;
-            case RG32_UINT -> 16L;
-            case RGB32_UINT -> 17L;
-            case RGBA32_UINT -> 18L;
-            case R32_SINT -> 19L;
-            case RG32_SINT -> 20L;
-            case RGB32_SINT -> 21L;
-            case RGBA32_SINT -> 22L;
-            case R16_FLOAT -> 23L;
-            case RG16_FLOAT -> 24L;
-            case RGBA16_FLOAT -> 25L;
-            case RGBA8_SNORM -> 26L;
-            case RGBA8_SINT -> 27L;
-            case RGB8_UNORM -> 28L;
-            case RGB8_SNORM -> 29L;
-            case RGB8_UINT -> 30L;
-            case RGB8_SINT -> 31L;
-            case RGB16_UINT -> 32L;
-            case RGB16_SINT -> 33L;
-            case RGB16_UNORM -> 34L;
-            case RGB16_SNORM -> 35L;
-            case RGB16_FLOAT -> 36L;
-            default -> 0L;
+            case R32_FLOAT -> MTLVertexFormat.Float;
+            case RG32_FLOAT -> MTLVertexFormat.Float2;
+            case RGB32_FLOAT -> MTLVertexFormat.Float3;
+            case RGBA32_FLOAT -> MTLVertexFormat.Float4;
+            case RGBA8_UNORM -> MTLVertexFormat.UChar4Normalized;
+            case RGBA8_UINT -> MTLVertexFormat.UChar4;
+            case RG16_UINT -> MTLVertexFormat.UShort2;
+            case RG16_UNORM -> MTLVertexFormat.UShort2Normalized;
+            case RG16_SINT -> MTLVertexFormat.Short2;
+            case RG16_SNORM -> MTLVertexFormat.Short2Normalized;
+            case RGBA16_UINT -> MTLVertexFormat.UShort4;
+            case RGBA16_SINT -> MTLVertexFormat.Short4;
+            case RGBA16_UNORM -> MTLVertexFormat.UShort4Normalized;
+            case RGBA16_SNORM -> MTLVertexFormat.Short4Normalized;
+            case R32_UINT -> MTLVertexFormat.UInt;
+            case RG32_UINT -> MTLVertexFormat.UInt2;
+            case RGB32_UINT -> MTLVertexFormat.UInt3;
+            case RGBA32_UINT -> MTLVertexFormat.UInt4;
+            case R32_SINT -> MTLVertexFormat.Int;
+            case RG32_SINT -> MTLVertexFormat.Int2;
+            case RGB32_SINT -> MTLVertexFormat.Int3;
+            case RGBA32_SINT -> MTLVertexFormat.Int4;
+            case R16_FLOAT -> MTLVertexFormat.Half;
+            case RG16_FLOAT -> MTLVertexFormat.Half2;
+            case RGBA16_FLOAT -> MTLVertexFormat.Half4;
+            case RGBA8_SNORM -> MTLVertexFormat.Char4Normalized;
+            case RGBA8_SINT -> MTLVertexFormat.Char4;
+            case RGB8_UNORM -> MTLVertexFormat.UChar3Normalized;
+            case RGB8_SNORM -> MTLVertexFormat.Char3Normalized;
+            case RGB8_UINT -> MTLVertexFormat.UChar3;
+            case RGB8_SINT -> MTLVertexFormat.Char3;
+            case RGB16_UINT -> MTLVertexFormat.UShort3;
+            case RGB16_SINT -> MTLVertexFormat.Short3;
+            case RGB16_UNORM -> MTLVertexFormat.UShort3Normalized;
+            case RGB16_SNORM -> MTLVertexFormat.Short3Normalized;
+            case RGB16_FLOAT -> MTLVertexFormat.Half3;
+            default -> MTLVertexFormat.Invalid;
         };
     }
 }

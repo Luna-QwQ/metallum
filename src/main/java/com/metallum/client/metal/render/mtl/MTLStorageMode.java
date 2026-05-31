@@ -6,8 +6,9 @@ import net.fabricmc.api.Environment;
 @Environment(EnvType.CLIENT)
 public enum MTLStorageMode {
     Shared(0L),
-    Managed(1L << 4),
-    Private(2L << 4);
+    Managed(1L),
+    Private(2L),
+    Memoryless(3L);
 
     public final long value;
 

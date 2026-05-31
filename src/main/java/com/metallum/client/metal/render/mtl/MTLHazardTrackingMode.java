@@ -6,8 +6,8 @@ import net.fabricmc.api.Environment;
 @Environment(EnvType.CLIENT)
 public enum MTLHazardTrackingMode {
     Default(0L),
-    Untracked(1L << 8),
-    Tracked(2L << 8);
+    Untracked(1L),
+    Tracked(2L);
 
     public final long value;
 

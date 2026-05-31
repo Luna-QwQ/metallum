@@ -109,82 +109,6 @@ private func textureSliceCount(_ texture: MTLTexture) -> Int {
     }
 }
 
-private func primitiveType(from code: Int) -> MTLPrimitiveType {
-    switch code {
-    case 0: return .triangle
-    case 1: return .triangleStrip
-    case 2: return .line
-    case 3: return .lineStrip
-    case 4: return .point
-    default: return .triangle
-    }
-}
-
-private func vertexFormat(from code: UInt64) -> MTLVertexFormat {
-    switch code {
-    case 1: return .float
-    case 2: return .float2
-    case 3: return .float3
-    case 4: return .float4
-    case 5: return .uchar4Normalized
-    case 6: return .uchar4
-    case 7: return .ushort2
-    case 8: return .ushort2Normalized
-    case 9: return .short2
-    case 10: return .short2Normalized
-    case 11: return .ushort4
-    case 12: return .short4
-    case 13: return .ushort4Normalized
-    case 14: return .short4Normalized
-    case 15: return .uint
-    case 16: return .uint2
-    case 17: return .uint3
-    case 18: return .uint4
-    case 19: return .int
-    case 20: return .int2
-    case 21: return .int3
-    case 22: return .int4
-    case 23: return .half
-    case 24: return .half2
-    case 25: return .half4
-    case 26: return .char4Normalized
-    case 27: return .char4
-    case 28: return .uchar3Normalized
-    case 29: return .char3Normalized
-    case 30: return .uchar3
-    case 31: return .char3
-    case 32: return .ushort3
-    case 33: return .short3
-    case 34: return .ushort3Normalized
-    case 35: return .short3Normalized
-    case 36: return .half3
-    case 37: return .uchar4Normalized_bgra
-    case 38: return .uchar2
-    default: return .invalid
-    }
-}
-
-private func blendFactor(from code: UInt64) -> MTLBlendFactor {
-    switch code {
-    case 0: return .zero
-    case 1: return .one
-    case 2: return .sourceColor
-    case 3: return .oneMinusSourceColor
-    case 4: return .sourceAlpha
-    case 5: return .oneMinusSourceAlpha
-    case 6: return .destinationColor
-    case 7: return .oneMinusDestinationColor
-    case 8: return .destinationAlpha
-    case 9: return .oneMinusDestinationAlpha
-    case 10: return .sourceAlphaSaturated
-    case 11: return .blendColor
-    case 12: return .oneMinusBlendColor
-    case 13: return .blendAlpha
-    case 14: return .oneMinusBlendAlpha
-    default: return .one
-    }
-}
-
 private func blendOperation(from code: UInt64) -> MTLBlendOperation {
     switch code {
     case 0: return .add
@@ -601,11 +525,11 @@ private func ensureDynamicPipeline(
 
         if blendEnabled {
             descriptor.colorAttachments[0].isBlendingEnabled = true
-            descriptor.colorAttachments[0].sourceRGBBlendFactor = blendFactor(from: blendSourceRgb)
-            descriptor.colorAttachments[0].destinationRGBBlendFactor = blendFactor(from: blendDestRgb)
+            descriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactor(rawValue: UInt(blendSourceRgb)) ?? .one
+            descriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactor(rawValue: UInt(blendDestRgb)) ?? .zero
             descriptor.colorAttachments[0].rgbBlendOperation = blendOperation(from: blendOpRgb)
-            descriptor.colorAttachments[0].sourceAlphaBlendFactor = blendFactor(from: blendSourceAlpha)
-            descriptor.colorAttachments[0].destinationAlphaBlendFactor = blendFactor(from: blendDestAlpha)
+            descriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactor(rawValue: UInt(blendSourceAlpha)) ?? .one
+            descriptor.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactor(rawValue: UInt(blendDestAlpha)) ?? .zero
             descriptor.colorAttachments[0].alphaBlendOperation = blendOperation(from: blendOpAlpha)
         } else {
             descriptor.colorAttachments[0].isBlendingEnabled = false
@@ -614,7 +538,7 @@ private func ensureDynamicPipeline(
         if vertexAttributeCount > 0 {
             let vertexDescriptor = MTLVertexDescriptor()
             for index in 0..<Int(vertexAttributeCount) {
-                let format = vertexFormat(from: formats[index])
+                let format = MTLVertexFormat(rawValue: UInt(formats[index])) ?? .invalid
                 if format == .invalid {
                     NSLog("[metallum] Unsupported vertex attribute format code: %llu", formats[index])
                     return nil
@@ -1340,7 +1264,7 @@ public func metallum_MTLRenderCommandEncoder_setFrontFacingWinding(_ encoderPtr:
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
-    encoder.setFrontFacing(clockwise != 0 ? .clockwise : .counterClockwise)
+    encoder.setFrontFacing(MTLWinding(rawValue: UInt(clockwise)) ?? .clockwise)
     }
 }
 
@@ -1350,14 +1274,7 @@ public func metallum_MTLRenderCommandEncoder_setCullMode(_ encoderPtr: UnsafeMut
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
-    switch cullMode {
-    case 1:
-        encoder.setCullMode(.front)
-    case 2:
-        encoder.setCullMode(.back)
-    default:
-        encoder.setCullMode(.none)
-    }
+    encoder.setCullMode(MTLCullMode(rawValue: UInt(cullMode)) ?? .none)
     }
 }
 
@@ -1367,76 +1284,58 @@ public func metallum_MTLRenderCommandEncoder_setTriangleFillMode(_ encoderPtr: U
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
-    encoder.setTriangleFillMode(lines != 0 ? .lines : .fill)
+    encoder.setTriangleFillMode(MTLTriangleFillMode(rawValue: UInt(lines)) ?? .fill)
     }
 }
 
-@_cdecl("metallum_MTLRenderCommandEncoder_setVertexBuffer")
-public func metallum_MTLRenderCommandEncoder_setVertexBuffer(_ encoderPtr: UnsafeMutableRawPointer?, _ bufferPtr: UnsafeMutableRawPointer?, _ offset: UInt64, _ index: UInt64) {
-    return withMetalAutoreleasePool {
-    guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
-        return
-    }
-    if index > UInt64(metallumMaxVertexBufferSlot) {
-        return
-    }
-    let buffer: MTLBuffer? = object(bufferPtr)
-    encoder.setVertexBuffer(buffer, offset: Int(offset), index: Int(index))
-    }
-}
-
-@_cdecl("metallum_MTLRenderCommandEncoder_setFragmentBuffer")
-public func metallum_MTLRenderCommandEncoder_setFragmentBuffer(_ encoderPtr: UnsafeMutableRawPointer?, _ bufferPtr: UnsafeMutableRawPointer?, _ offset: UInt64, _ index: UInt64) {
+@_cdecl("metallum_MTLRenderCommandEncoder_setBuffer")
+public func metallum_MTLRenderCommandEncoder_setBuffer(_ encoderPtr: UnsafeMutableRawPointer?, _ bufferPtr: UnsafeMutableRawPointer?, _ offset: UInt64, _ index: UInt64, _ stageMask: Int32) {
     return withMetalAutoreleasePool {
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
     let buffer: MTLBuffer? = object(bufferPtr)
-    encoder.setFragmentBuffer(buffer, offset: Int(offset), index: Int(index))
+    if (stageMask & 1) != 0 && index <= UInt64(metallumMaxVertexBufferSlot) {
+        encoder.setVertexBuffer(buffer, offset: Int(offset), index: Int(index))
+    }
+    if (stageMask & 2) != 0 {
+        encoder.setFragmentBuffer(buffer, offset: Int(offset), index: Int(index))
+    }
     }
 }
 
-@_cdecl("metallum_MTLRenderCommandEncoder_setVertexTexture")
-public func metallum_MTLRenderCommandEncoder_setVertexTexture(_ encoderPtr: UnsafeMutableRawPointer?, _ texturePtr: UnsafeMutableRawPointer?, _ index: UInt64) {
+@_cdecl("metallum_MTLRenderCommandEncoder_setTexture")
+public func metallum_MTLRenderCommandEncoder_setTexture(_ encoderPtr: UnsafeMutableRawPointer?, _ texturePtr: UnsafeMutableRawPointer?, _ index: UInt64, _ stageMask: Int32) {
     return withMetalAutoreleasePool {
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
     let texture: MTLTexture? = object(texturePtr)
-    encoder.setVertexTexture(texture, index: Int(index))
+    if (stageMask & 1) != 0 {
+        encoder.setVertexTexture(texture, index: Int(index))
+    }
+    if (stageMask & 2) != 0 {
+        encoder.setFragmentTexture(texture, index: Int(index))
+    }
     }
 }
 
-@_cdecl("metallum_MTLRenderCommandEncoder_setFragmentTexture")
-public func metallum_MTLRenderCommandEncoder_setFragmentTexture(_ encoderPtr: UnsafeMutableRawPointer?, _ texturePtr: UnsafeMutableRawPointer?, _ index: UInt64) {
+@_cdecl("metallum_MTLRenderCommandEncoder_setTextureAndSampler")
+public func metallum_MTLRenderCommandEncoder_setTextureAndSampler(_ encoderPtr: UnsafeMutableRawPointer?, _ texturePtr: UnsafeMutableRawPointer?, _ samplerPtr: UnsafeMutableRawPointer?, _ index: UInt64, _ stageMask: Int32) {
     return withMetalAutoreleasePool {
     guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
         return
     }
     let texture: MTLTexture? = object(texturePtr)
-    encoder.setFragmentTexture(texture, index: Int(index))
-    }
-}
-
-@_cdecl("metallum_MTLRenderCommandEncoder_setVertexSamplerState")
-public func metallum_MTLRenderCommandEncoder_setVertexSamplerState(_ encoderPtr: UnsafeMutableRawPointer?, _ samplerPtr: UnsafeMutableRawPointer?, _ index: UInt64) {
-    return withMetalAutoreleasePool {
-    guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
-        return
-    }
     let sampler: MTLSamplerState? = object(samplerPtr)
-    encoder.setVertexSamplerState(sampler, index: Int(index))
+    if (stageMask & 1) != 0 {
+        encoder.setVertexTexture(texture, index: Int(index))
+        encoder.setVertexSamplerState(sampler, index: Int(index))
     }
-}
-
-@_cdecl("metallum_MTLRenderCommandEncoder_setFragmentSamplerState")
-public func metallum_MTLRenderCommandEncoder_setFragmentSamplerState(_ encoderPtr: UnsafeMutableRawPointer?, _ samplerPtr: UnsafeMutableRawPointer?, _ index: UInt64) {
-    return withMetalAutoreleasePool {
-    guard let encoder: MTLRenderCommandEncoder = object(encoderPtr) else {
-        return
+    if (stageMask & 2) != 0 {
+        encoder.setFragmentTexture(texture, index: Int(index))
+        encoder.setFragmentSamplerState(sampler, index: Int(index))
     }
-    let sampler: MTLSamplerState? = object(samplerPtr)
-    encoder.setFragmentSamplerState(sampler, index: Int(index))
     }
 }
 
@@ -1470,7 +1369,7 @@ public func metallum_MTLRenderCommandEncoder_drawPrimitives(
     }
 
     encoder.drawPrimitives(
-        type: primitiveType(from: primitiveTypeCode),
+        type: MTLPrimitiveType(rawValue: UInt(primitiveTypeCode)) ?? .triangle,
         vertexStart: firstVertex,
         vertexCount: vertexCount,
         instanceCount: instanceCount
@@ -1494,7 +1393,7 @@ public func metallum_MTLRenderCommandEncoder_drawIndexedPrimitives(
         return
     }
     encoder.drawIndexedPrimitives(
-        type: primitiveType(from: primitiveTypeCode),
+        type: MTLPrimitiveType(rawValue: UInt(primitiveTypeCode)) ?? .triangle,
         indexCount: indexCount,
         indexType: indexType == 0 ? .uint16 : .uint32,
         indexBuffer: indexBuffer,

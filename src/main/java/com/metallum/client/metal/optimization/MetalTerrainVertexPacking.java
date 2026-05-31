@@ -1,5 +1,6 @@
 package com.metallum.client.metal.optimization;
 
+import com.metallum.client.metal.render.mtl.MTLVertexFormat;
 import com.metallum.mixin.optimization.accessor.MeshDataAccessor;
 import com.metallum.mixin.optimization.accessor.SectionCompilerResultsAccessor;
 import com.mojang.blaze3d.PrimitiveTopology;
@@ -34,10 +35,10 @@ public final class MetalTerrainVertexPacking {
     private static final int DST_UV0_V = 18;
     private static final int DST_UV2 = 20;
 
-    private static final long METAL_VERTEX_FORMAT_FLOAT3 = 3L;
-    private static final long METAL_VERTEX_FORMAT_UCHAR4_NORMALIZED = 5L;
-    private static final long METAL_VERTEX_FORMAT_USHORT2_NORMALIZED = 8L;
-    private static final long METAL_VERTEX_FORMAT_SHORT2 = 9L;
+    private static final long METAL_VERTEX_FORMAT_FLOAT3 = MTLVertexFormat.Float3.value;
+    private static final long METAL_VERTEX_FORMAT_UCHAR4_NORMALIZED = MTLVertexFormat.UChar4Normalized.value;
+    private static final long METAL_VERTEX_FORMAT_USHORT2_NORMALIZED = MTLVertexFormat.UShort2Normalized.value;
+    private static final long METAL_VERTEX_FORMAT_SHORT2 = MTLVertexFormat.Short2.value;
 
     private static final long[] PACKED_ATTRIBUTE_FORMATS = {
             METAL_VERTEX_FORMAT_FLOAT3,

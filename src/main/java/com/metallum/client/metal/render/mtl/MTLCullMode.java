@@ -5,13 +5,13 @@ import net.fabricmc.api.Environment;
 
 @Environment(EnvType.CLIENT)
 public enum MTLCullMode {
-    None(0),
-    Front(1),
-    Back(2);
+    None(0L),
+    Front(1L),
+    Back(2L);
 
-    public final int value;
+    public final long value;
 
-    MTLCullMode(final int value) {
+    MTLCullMode(final long value) {
         this.value = value;
     }
 }
