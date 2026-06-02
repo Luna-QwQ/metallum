@@ -430,7 +430,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 enc.setDepthBias(
                         compiledPipeline.depthBiasConstant(),
                         compiledPipeline.depthBiasScaleFactor(),
-                        0.0
+                        0.0f
                 );
             }
 

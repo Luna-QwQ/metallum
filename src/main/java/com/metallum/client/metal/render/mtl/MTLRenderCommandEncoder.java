@@ -21,7 +21,7 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setDepthStencilState(handle(), depthStencilState);
     }
 
-    public void setDepthBias(final double depthBias, final double slopeScale, final double clamp) {
+    public void setDepthBias(final float depthBias, final float slopeScale, final float clamp) {
         MetalNativeBridge.INSTANCE.MTLRenderCommandEncoder_setDepthBias(handle(), depthBias, slopeScale, clamp);
     }
 

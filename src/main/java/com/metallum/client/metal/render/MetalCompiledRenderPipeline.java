@@ -49,8 +49,8 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
     private final int[] metalSlotByVertexBinding;
     private final long depthCompareOp;
     private final int depthWrite;
-    private final double depthBiasScaleFactor;
-    private final double depthBiasConstant;
+    private final float depthBiasScaleFactor;
+    private final float depthBiasConstant;
     private final Map<PipelineVariantKey, MemorySegment> nativePipelines = new ConcurrentHashMap<>();
     private MemorySegment depthStencilState = MemorySegment.NULL;
 
@@ -79,8 +79,8 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
         if (depthStencilState == null) {
             this.depthCompareOp = 1L;
             this.depthWrite = 0;
-            this.depthBiasScaleFactor = 0.0;
-            this.depthBiasConstant = 0.0;
+            this.depthBiasScaleFactor = 0.0f;
+            this.depthBiasConstant = 0.0f;
         } else {
             this.depthCompareOp = MetalPipelineSupport.toCompareOpCode(depthStencilState.depthTest());
             this.depthWrite = depthStencilState.writeDepth() ? 1 : 0;
@@ -111,11 +111,11 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
         return binding >= 0 && binding < this.metalSlotByVertexBinding.length ? this.metalSlotByVertexBinding[binding] : -1;
     }
 
-    double depthBiasScaleFactor() {
+    float depthBiasScaleFactor() {
         return this.depthBiasScaleFactor;
     }
 
-    double depthBiasConstant() {
+    float depthBiasConstant() {
         return this.depthBiasConstant;
     }
 
@@ -164,13 +164,13 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
             long stride = packedTerrain && i == MAIN_VERTEX_BINDING_INDEX ? MetalTerrainVertexPacking.PACKED_TERRAIN_VERTEX_SIZE : binding.getVertexSize();
             long stepRate = binding.getStepRate();
             long stepFunction = stepRate > 0 ? 1 : 0; // 0 = perVertex, 1 = perInstance
-            vertexDesc.setLayout((long) metalSlot, stride, stepFunction, stepRate > 0 ? stepRate : 1);
+            vertexDesc.setLayout(metalSlot, stride, stepFunction, stepRate > 0 ? stepRate : 1);
 
             if (packedTerrain && i == MAIN_VERTEX_BINDING_INDEX) {
                 long[] packedFormats = MetalTerrainVertexPacking.packedAttributeFormats();
                 long[] packedOffsets = MetalTerrainVertexPacking.packedAttributeOffsets();
                 for (int k = 0; k < packedFormats.length; k++) {
-                    vertexDesc.setAttribute(attrIndex, packedFormats[k], packedOffsets[k], (long) metalSlot);
+                    vertexDesc.setAttribute(attrIndex, packedFormats[k], packedOffsets[k], metalSlot);
                     attrIndex++;
                 }
             } else {
@@ -179,7 +179,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
                     if (format.value == MTLVertexFormat.Invalid.value) {
                         throw new IllegalStateException("Unsupported vertex attribute format: " + element.format());
                     }
-                    vertexDesc.setAttribute(attrIndex, format.value, (long) element.offset(), (long) metalSlot);
+                    vertexDesc.setAttribute(attrIndex, format.value, element.offset(), metalSlot);
                     attrIndex++;
                 }
             }
