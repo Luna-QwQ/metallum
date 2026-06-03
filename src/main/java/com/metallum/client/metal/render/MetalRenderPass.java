@@ -249,9 +249,7 @@ final class MetalRenderPass implements RenderPassBackend {
 
     @Override
     public void draw(final int vertexCount, final int instanceCount, final int firstVertex, final int firstInstance) {
-        PrimitiveTopology primitiveTopology = primitiveTopology();
-        MTLPrimitiveType primitiveType = MTLPrimitiveType.from(primitiveTopology);
-
+        MTLPrimitiveType primitiveType = primitiveTopology();
         MTLRenderCommandEncoder enc = renderEncoder();
 
         bindDrawState(enc);
@@ -388,8 +386,7 @@ final class MetalRenderPass implements RenderPassBackend {
             final int instanceCount,
             final MTLIndexType indexType
     ) {
-        PrimitiveTopology primitiveTopology = primitiveTopology();
-        MTLPrimitiveType primitiveType = MTLPrimitiveType.from(primitiveTopology);
+        MTLPrimitiveType primitiveType = primitiveTopology();
 
         int safeInstanceCount = Math.max(1, instanceCount);
         long indexOffsetBytes = (long) firstIndex * indexType.bytes;
@@ -473,7 +470,7 @@ final class MetalRenderPass implements RenderPassBackend {
         }
     }
 
-    private PrimitiveTopology primitiveTopology() {
+    private MTLPrimitiveType primitiveTopology() {
         if (compiledPipeline == null) {
             throw new IllegalStateException("Pipeline is missing");
         }

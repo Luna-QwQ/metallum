@@ -43,7 +43,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
     private final MTLTriangleFillMode fillMode;
     private final float depthBiasScaleFactor;
     private final float depthBiasConstant;
-    private final PrimitiveTopology topology;
+    private final MTLPrimitiveType topology;
     private final int vertexBufferCount;
 
     private final MemorySegment depthStencilState;
@@ -65,7 +65,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
         this.firstAvailableVertexBufferSlot = firstAvailableVertexBufferSlot(resources);
         this.cullMode = info.isCull() ? MTLCullMode.Back : MTLCullMode.None;
         this.fillMode = info.getPolygonMode() == PolygonMode.WIREFRAME ? MTLTriangleFillMode.Lines : MTLTriangleFillMode.Fill;
-        this.topology = info.getPrimitiveTopology();
+        this.topology = MTLPrimitiveType.from(info.getPrimitiveTopology());
         this.vertexBufferCount = info.getVertexFormatBindings().length;
 
         long depthCompareOp;
@@ -195,7 +195,7 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
         return this.fillMode;
     }
 
-    PrimitiveTopology topology() {
+    MTLPrimitiveType topology() {
         return this.topology;
     }
 
