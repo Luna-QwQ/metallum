@@ -7,7 +7,6 @@ import net.irisshaders.iris.features.FeatureFlags;
 import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.helpers.Tri;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
-import net.irisshaders.iris.pipeline.programs.SodiumPrograms;
 import net.irisshaders.iris.shaderpack.properties.CloudSetting;
 import net.irisshaders.iris.shaderpack.properties.ParticleRenderingSettings;
 import net.irisshaders.iris.shaderpack.texture.TextureStage;
@@ -50,8 +49,6 @@ public interface WorldRenderingPipeline {
 	void finalizeGameRendering();
 
 	void destroy();
-
-	SodiumPrograms getSodiumPrograms();
 
 	FrameUpdateNotifier getFrameUpdateNotifier();
 

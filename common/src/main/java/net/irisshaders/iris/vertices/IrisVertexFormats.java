@@ -75,7 +75,7 @@ public class IrisVertexFormats {
 		int byteIndex = 0;
 		for (VertexFormatElement element : format.getElements()) {
 			Iris.logger.info(element.name() + " @ " + byteIndex + " is " + element.format());
-			byteIndex += element.format().pixelSize();
+			byteIndex += element.format().blockSize();
 		}
 	}
 

@@ -99,18 +99,8 @@ loom {
             configName = "Fabric Client"
             ideConfigGenerated(true)
             runDir("run")
-            vmArg("-Dorg.lwjgl.util.DebugAllocator=true")
            // vmArgs("-Dmixin.debug.export=true")
            // vmArg("-XX:+AllowEnhancedClassRedefinition")
-        }
-        create("clientWithRenderdoc") {
-            client()
-            configName = "Fabric Client"
-            ideConfigGenerated(true)
-            runDir("run")
-            environmentVariable("LD_PRELOAD", "/usr/lib/librenderdoc.so")
-            vmArgs("-DMC_DEBUG_ENABLED=true", "-DMC_DEBUG_DUMP_TEXTURE_ATLAS=true")
-            programArgs("--renderDebugLabels")
         }
     }
 }

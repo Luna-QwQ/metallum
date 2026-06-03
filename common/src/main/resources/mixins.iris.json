@@ -36,6 +36,7 @@
     "MixinGameRenderer",
     "MixinGameRenderer_NightVisionCompat",
     "MixinGlCommandEncoder",
+    "MixinGlProgram",
     "MixinGlStateManager",
     "MixinGlStateManager_BlendOverride",
     "MixinGlStateManager_DepthColorOverride",

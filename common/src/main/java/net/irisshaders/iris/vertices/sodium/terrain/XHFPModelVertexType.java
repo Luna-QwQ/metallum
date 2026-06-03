@@ -1,6 +1,6 @@
 package net.irisshaders.iris.vertices.sodium.terrain;
 
-import net.caffeinemc.mods.sodium.client.gl.attribute.GlVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;
 
@@ -15,13 +15,13 @@ public class XHFPModelVertexType implements ChunkVertexType {
 	private static final float MODEL_SCALE = MODEL_RANGE / POSITION_MAX_VALUE;
 	private static final float MODEL_SCALE_INV = POSITION_MAX_VALUE / MODEL_RANGE;
 	private static final float TEXTURE_SCALE = (1.0f / TEXTURE_MAX_VALUE);
-	private final GlVertexFormat format;
+	private final VertexFormat format;
 	private final int normalOffset;
 	private final int blockIdOffset;
 	private final int midBlockOffset;
 	private final int midUvOffset;
 
-	public XHFPModelVertexType(GlVertexFormat format, int blockIdOffset, int normalOffset, int midUvOffset, int midBlockOffset) {
+	public XHFPModelVertexType(VertexFormat format, int blockIdOffset, int normalOffset, int midUvOffset, int midBlockOffset) {
 		this.format = format;
 		this.blockIdOffset = blockIdOffset;
 		this.normalOffset = normalOffset;
@@ -35,12 +35,12 @@ public class XHFPModelVertexType implements ChunkVertexType {
 	}
 
 	@Override
-	public GlVertexFormat getVertexFormat() {
+	public VertexFormat getVertexFormat() {
 		return format;
 	}
 
 	@Override
 	public ChunkVertexEncoder getEncoder() {
-		return new XHFPTerrainVertex(blockIdOffset, normalOffset, midUvOffset, midBlockOffset, format.getStride());
+		return new XHFPTerrainVertex(blockIdOffset, normalOffset, midUvOffset, midBlockOffset, format.getVertexSize());
 	}
 }

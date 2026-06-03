@@ -161,6 +161,10 @@ public class MixinGlCommandEncoder {
 	private void iris$setupState(GlRenderPass glRenderPass, Collection<String> collection, CallbackInfoReturnable<Boolean> cir) {
 		if (glRenderPass.pipeline.program() instanceof IrisProgram is && !is.iris$isSetUp()) {
 			GlRenderPass.TextureViewAndSampler sam = glRenderPass.samplers.get("Sampler0");
+
+            if (sam == null) {
+                sam = glRenderPass.samplers.get("u_BlockTex");
+            }
 			if (sam != null && Iris.getPipelineManager().getPipelineNullable() instanceof IrisRenderingPipeline irp) {
 				irp.onSetAlbedoTex(sam.view());
 			}

@@ -12,6 +12,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.logging.LogUtils;
+import net.caffeinemc.mods.sodium.client.render.chunk.ShaderChunkRenderer;
 import net.irisshaders.iris.compat.SkipList;
 import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
@@ -29,6 +30,7 @@ import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.gl.uniform.DynamicLocationalUniformHolder;
 import net.irisshaders.iris.mixinterface.ShaderInstanceInterface;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
+import net.irisshaders.iris.pipeline.transform.Patch;
 import net.irisshaders.iris.samplers.IrisSamplers;
 import net.irisshaders.iris.shadows.ShadowRenderer;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
@@ -91,10 +93,10 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 	private final IrisRenderingPipeline pipeline;
 
 	public ExtendedShader(int programId, String string, VertexFormat vertexFormat, boolean usesTessellation,
-						  GlFramebuffer writingToBeforeTranslucent, GlFramebuffer writingToAfterTranslucent,
-						  BlendModeOverride blendModeOverride, AlphaTest alphaTest,
-						  Consumer<DynamicLocationalUniformHolder> uniformCreator, BiConsumer<SamplerHolder, ImageHolder> samplerCreator, boolean isIntensity,
-						  IrisRenderingPipeline parent, @Nullable List<BufferBlendOverride> bufferBlendOverrides, CustomUniforms customUniforms) throws IOException {
+                          GlFramebuffer writingToBeforeTranslucent, GlFramebuffer writingToAfterTranslucent,
+                          BlendModeOverride blendModeOverride, AlphaTest alphaTest,
+                          Consumer<DynamicLocationalUniformHolder> uniformCreator, BiConsumer<SamplerHolder, ImageHolder> samplerCreator, boolean isIntensity,
+                          IrisRenderingPipeline parent, @Nullable List<BufferBlendOverride> bufferBlendOverrides, CustomUniforms customUniforms, Patch patch) throws IOException {
 		super(programId, string);
 
 		this.pipeline = parent;
@@ -104,7 +106,7 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 		((ShaderInstanceInterface) this).setShouldSkip(SkipList.NONE);
 
 		boolean has1 = false, has2 = false, has0 = false;
-		if (vertexFormat.contains("UV0")) {
+		if (vertexFormat.contains("UV0") || vertexFormat.contains("a_TexCoord")) {
 			this.hasUV = true;
 			has0 = true;
 		}
@@ -113,35 +115,40 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 			has1 = true;
 		}
 
-		if (vertexFormat.contains("UV2")) {
+		if (vertexFormat.contains("UV2") || vertexFormat.contains("a_LightAndData")) {
 			has2 = true;
 		}
+        List<BindGroupLayout> layouts = new ArrayList<>();
 
-		BindGroupLayout samplr = null;
+		if (patch == Patch.VANILLA) {
+            BindGroupLayout samplr = null;
 
-		if (has0) {
-			if (has1) {
-				if (has2) {
-					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2;
-				} else {
-					samplr = BindGroupLayouts.SAMPLER0_SAMPLER1;
-				}
-			} else if (has2) {
-				samplr = BindGroupLayouts.SAMPLER0_SAMPLER2;
-			} else {
-				samplr = BindGroupLayouts.SAMPLER0;
-			}
-		}
+            if (has0) {
+                if (has1) {
+                    if (has2) {
+                        samplr = BindGroupLayouts.SAMPLER0_SAMPLER1_SAMPLER2;
+                    } else {
+                        samplr = BindGroupLayouts.SAMPLER0_SAMPLER1;
+                    }
+                } else if (has2) {
+                    samplr = BindGroupLayouts.SAMPLER0_SAMPLER2;
+                } else {
+                    samplr = BindGroupLayouts.SAMPLER0;
+                }
+            }
 
-		List<BindGroupLayout> layouts = new ArrayList<>();
-		if (samplr != null) layouts.add(samplr);
-		layouts.add(BindGroupLayouts.DYNAMIC_TRANSFORMS);
-		layouts.add(BindGroupLayouts.CLOUD_INFO);
-		layouts.add(BindGroupLayouts.PROJECTION);
-		layouts.add(BindGroupLayouts.GLOBALS);
-		layouts.add(BindGroupLayouts.FOG);
+            if (samplr != null) layouts.add(samplr);
+            layouts.add(BindGroupLayouts.DYNAMIC_TRANSFORMS);
+            layouts.add(BindGroupLayouts.CLOUD_INFO);
+            layouts.add(BindGroupLayouts.PROJECTION);
+            layouts.add(BindGroupLayouts.GLOBALS);
+            layouts.add(BindGroupLayouts.FOG);
+        } else {
+            layouts.add(ShaderChunkRenderer.BIND_GROUP);
+        }
 
 		super.setupBindGroupLayouts(layouts);
+
 
 		ProgramUniforms.Builder uniformBuilder = ProgramUniforms.builder(string, programId);
 		ProgramSamplers.Builder samplerBuilder = ProgramSamplers.builder(programId, IrisSamplers.WORLD_RESERVED_TEXTURE_UNITS);
@@ -227,14 +234,6 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 		this.samplers.update();
 		uniforms.update();
 
-		if (!samplers.containsKey("Sampler1")) {
-			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 1, pipeline.getBiggerWhitePixel().getTexture().iris$getGlId());
-		}
-
-		if (!samplers.containsKey("Sampler2")) {
-			IrisRenderSystem.bindTextureToUnit(GL46C.GL_TEXTURE_2D, 2, pipeline.getWhitePixel().getTexture().iris$getGlId());
-		}
-
 		customUniforms.push(this);
 
 		images.update();
@@ -268,6 +267,9 @@ public class ExtendedShader extends GlProgram implements IrisProgram {
 
 	@Override
 	public int iris$getBlockIndex(int program, CharSequence uniformBlockName) {
+        if (((String) uniformBlockName).contains("u_")) {
+            return GL46C.glGetUniformBlockIndex(program, uniformBlockName);
+        }
 		return GL46C.glGetUniformBlockIndex(program, "iris_" + uniformBlockName);
 	}
 

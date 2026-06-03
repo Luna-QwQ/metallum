@@ -19,7 +19,7 @@ public class MixinUniform {
 												  CallbackInfoReturnable<Integer> cir) {
 		int location = cir.getReturnValue();
 
-		if (location == -1 && name.equals("Sampler0")) {
+		if (location == -1 && (name.equals("Sampler0") || name.equals("u_BlockTex"))) {
 			location = GlStateManager._glGetUniformLocation(programId, "tex");
 
 			if (location == -1) {
@@ -37,7 +37,7 @@ public class MixinUniform {
 			location = GlStateManager._glGetUniformLocation(programId, "iris_overlay");
 		}
 
-		if (location == -1 && name.equals("Sampler2")) {
+		if (location == -1 && (name.equals("Sampler2") || name.equals("u_LightTex"))) {
 			location = GlStateManager._glGetUniformLocation(programId, "lightmap");
 		}
 

@@ -17,7 +17,6 @@
     "MixinChunkVertex",
     "MixinDefaultChunkRenderer",
     "MixinDefaultFluidRenderer",
-    "MixinGlRenderDevice",
     "MixinRenderRegionArenas",
     "MixinRenderRegionManager",
     "MixinRenderRegion",

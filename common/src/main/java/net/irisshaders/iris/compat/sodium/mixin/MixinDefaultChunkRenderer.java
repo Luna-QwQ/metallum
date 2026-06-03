@@ -2,6 +2,7 @@ package net.irisshaders.iris.compat.sodium.mixin;
 
 import net.caffeinemc.mods.sodium.client.gui.SodiumOptions;
 import net.caffeinemc.mods.sodium.client.render.chunk.DefaultChunkRenderer;
+import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -17,10 +18,10 @@ public class MixinDefaultChunkRenderer {
 	}
 
 	// TODO IMS: Something about this feels... wrong.
-	@ModifyArg(method = "prepareIndexedTessellation", index = 2, at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/DefaultChunkRenderer;createRegionTessellation(Lnet/caffeinemc/mods/sodium/client/gl/device/CommandList;Lnet/caffeinemc/mods/sodium/client/render/chunk/region/RenderRegion$DeviceResources;Z)Lnet/caffeinemc/mods/sodium/client/gl/tessellation/GlTessellation;"), remap = false)
-	private boolean doNotSortInShadow(boolean useSharedIndexBuffer) {
+	@Redirect(method = "render", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/terrain/TerrainRenderPass;isTranslucent()Z"), remap = false)
+	private boolean doNotSortInShadow(TerrainRenderPass instance) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) return false;
 
-		return useSharedIndexBuffer;
+		return instance.isTranslucent();
 	}
 }

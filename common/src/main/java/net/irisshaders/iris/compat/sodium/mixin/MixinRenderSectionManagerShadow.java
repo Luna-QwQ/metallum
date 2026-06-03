@@ -2,7 +2,7 @@ package net.irisshaders.iris.compat.sodium.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
@@ -17,6 +17,7 @@ import net.irisshaders.iris.mixinterface.ShadowRenderRegion;
 import net.irisshaders.iris.shadows.ShadowRenderingState;
 import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.MappableRingBuffer;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -54,7 +55,9 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 		throw new AssertionError();
 	}
 
-	@Unique
+    @Shadow private MappableRingBuffer uniformData;
+    @Shadow private int uboUpdateFrame;
+    @Unique
 	private @NotNull SortedRenderLists shadowRenderLists = SortedRenderLists.empty();
 
 	@Unique
@@ -67,10 +70,16 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 	private boolean renderListStateIsShadow;
 
 	@Unique
-	private boolean regularUboUpdated;
+	private int regularUboUpdated;
 
 	@Unique
-	private boolean shadowUboUpdated;
+	private int shadowUboUpdated;
+
+	@Unique
+	private MappableRingBuffer regularUbo;
+
+	@Unique
+	private MappableRingBuffer shadowUbo;
 
 	@Unique
 	private SortedRenderLists regularRenderLists;
@@ -89,6 +98,11 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 
 	@Unique
 	private boolean shadowScopeActive;
+
+    @Inject(method = "<init>", at = @At("TAIL"))
+    private void initIris(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CallbackInfo ci) {
+        this.shadowUbo = new MappableRingBuffer(() -> "Iris terrain uniform buffer (Shadow)", 130, 256);
+    }
 
 	@Unique
 	private void iris$swapToShadowRenderLists() {
@@ -125,11 +139,15 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 			this.regularNeedsGraphUpdate = this.needsGraphUpdate;
 			this.regularCameraChanged = this.cameraChanged;
 			this.shadowScopeActive = true;
+            this.regularUbo = this.uniformData;
+            this.regularUboUpdated = this.uboUpdateFrame;
 		}
 
 		this.iris$swapToShadowRenderLists();
 		this.renderLists = this.shadowRenderLists;
 		this.taskLists = this.shadowTaskLists;
+        this.uniformData = this.shadowUbo;
+        this.uboUpdateFrame = this.shadowUboUpdated;
 	}
 
 	@Override
@@ -145,11 +163,13 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 			this.needsGraphUpdate = this.regularNeedsGraphUpdate;
 			this.cameraChanged = this.regularCameraChanged;
 			this.shadowScopeActive = false;
+            this.uniformData = this.regularUbo;
+            this.uboUpdateFrame = this.regularUboUpdated;
 		}
 	}
 
 	@Inject(method = "<init>", at = @At("TAIL"))
-	private void create(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CommandList commandList, CallbackInfo ci) {
+	private void create(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CallbackInfo ci) {
 		this.shadowTaskLists = null;
 	}
 
@@ -223,4 +243,9 @@ public abstract class MixinRenderSectionManagerShadow implements ShadowRenderLis
 	private SortedRenderLists useShadowRenderLists(RenderSectionManager instance) {
 		return ShadowRenderingState.areShadowsCurrentlyBeingRendered() ? this.shadowRenderLists : this.renderLists;
 	}
+
+    @Inject(method = "destroy", at = @At("HEAD"))
+    private void iris$destroy(CallbackInfo ci) {
+        if (this.shadowUbo != null) this.shadowUbo.close();
+    }
 }

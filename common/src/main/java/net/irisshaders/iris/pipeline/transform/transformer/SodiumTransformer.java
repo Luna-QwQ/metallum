@@ -31,13 +31,12 @@ public class SodiumTransformer {
 		root.replaceExpressionMatches(t, CommonTransformer.glTextureMatrix0, "mat4(1.0)");
 		root.replaceExpressionMatches(t, CommonTransformer.glTextureMatrix1, "iris_LightmapTextureMatrix");
 		tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_FUNCTIONS, "uniform mat4 iris_LightmapTextureMatrix;");
-		root.rename("gl_ProjectionMatrix", "iris_ProjectionMatrix");
+		root.rename("gl_ProjectionMatrix", "u_ProjectionMatrix");
 
 		if (parameters.type.glShaderType == ShaderType.VERTEX) {
 			// Alias of gl_MultiTexCoord1 on 1.15+ for OptiFine
 			// See https://github.com/IrisShaders/Iris/issues/1149
 			root.rename("gl_MultiTexCoord2", "gl_MultiTexCoord1");
-			tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_DECLARATIONS, "uniform vec2 u_TexCoordShrink;");
 
 			root.replaceReferenceExpressions(t, "gl_MultiTexCoord0",
 				"vec4((_vert_tex_diffuse_coord_bias * u_TexCoordShrink) + _vert_tex_diffuse_coord, 0.0, 1.0)");
@@ -63,9 +62,9 @@ public class SodiumTransformer {
 		// TODO: Should probably add the normal matrix as a proper uniform that's
 		// computed on the CPU-side of things
 		root.replaceReferenceExpressions(t, "gl_NormalMatrix",
-			"iris_NormalMatrix");
+			"iris_NormalMat");
 		tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
-			"uniform mat3 iris_NormalMatrix;");
+			"uniform mat3 iris_NormalMat;");
 
 		tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
 			"uniform mat4 iris_ModelViewMatrixInverse;");
@@ -75,7 +74,7 @@ public class SodiumTransformer {
 
 		// TODO: All of the transformed variants of the input matrices, preferably
 		// computed on the CPU side...
-		root.rename("gl_ModelViewMatrix", "iris_ModelViewMatrix");
+		root.rename("gl_ModelViewMatrix", "u_ModelViewMatrix");
 		root.rename("gl_ModelViewMatrixInverse", "iris_ModelViewMatrixInverse");
 		root.rename("gl_ProjectionMatrixInverse", "iris_ProjectionMatrixInverse");
 
@@ -87,9 +86,7 @@ public class SodiumTransformer {
 					"vec4 ftransform() { return gl_ModelViewProjectionMatrix * gl_Vertex; }");
 			}
 			tree.parseAndInjectNodes(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
-				"uniform mat4 iris_ProjectionMatrix;",
-				"uniform mat4 iris_ModelViewMatrix;",
-				"uniform vec3 u_RegionOffset;",
+
 				// _draw_translation replaced with Chunks[_draw_id].offset.xyz
 				"vec4 getVertexPosition() { return vec4(_vert_position + u_RegionOffset + _get_draw_translation(_draw_id), 1.0); }");
 			root.replaceReferenceExpressions(t, "gl_Vertex", "getVertexPosition()");
@@ -99,13 +96,10 @@ public class SodiumTransformer {
 			// performed as an array of injections)
 			injectVertInit(t, tree, root, parameters, needsNormal);
 		} else {
-			tree.parseAndInjectNodes(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
-				"uniform mat4 iris_ModelViewMatrix;",
-				"uniform mat4 iris_ProjectionMatrix;");
 		}
 
 		root.replaceReferenceExpressions(t, "gl_ModelViewProjectionMatrix",
-			"(iris_ProjectionMatrix * iris_ModelViewMatrix)");
+			"(u_ProjectionMatrix * u_ModelViewMatrix)");
 
 		CommonTransformer.applyIntelHd4000Workaround(root);
 	}
@@ -115,7 +109,24 @@ public class SodiumTransformer {
 		TranslationUnit tree,
 		Root root,
 		SodiumParameters parameters, boolean needsNormal) {
-		tree.parseAndInjectNodes(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
+		tree.parseAndInjectNodes(t, ASTInjectionPoint.BEFORE_DECLARATIONS,"""
+                        layout(std140) uniform u_Globals {
+                              mat4 u_ProjectionMatrix;
+                              mat4 u_ModelViewMatrix;
+                        
+                              vec4 u_FogColor;
+                              vec2 u_EnvironmentFog;
+                              vec2 u_RenderFog;
+                        
+                              vec2 u_TexelSize;
+                              vec2 u_TexCoordShrink;
+                        
+                              float u_FadePeriodInv;
+                              bool u_UseRGSS;
+                          };""",
+                "uniform vec3 u_RegionOffset;",
+                "uniform int u_CurrentTime;",
+                "uniform uint u_RegionID;",
 			// translated from sodium's chunk_vertex.glsl
 			"vec3 _vert_position;",
 			"vec2 _vert_tex_diffuse_coord;",
@@ -203,12 +214,8 @@ vec4 decode_diamond_tangent_with_sign(vec3 normal, int qByte, bool signPositive)
 			"float _material_mip_bias(uint material) {\n" +
 				"    return ((material >> MATERIAL_USE_MIP_OFFSET) & 1u) != 0u ? 0.0f : -4.0f;\n" +
 				"}",
-			"uniform int iris_CurrentTime;",
-			"uniform float chunkFadeTimeInv;",
 			"""
-				layout(std140) uniform iris_ChunkData {
-				    ivec4 u_chunkFades[64]; // Packing into ivec4 is needed to avoid wasting 3KB...
-				};
+				uniform isamplerBuffer u_SectionTimeInfo;
 				""",
 			"void _vert_init() {" +
 				"_vert_position = ((_deinterleave_u20x3(a_Position) * VERTEX_SCALE) + VERTEX_OFFSET);" +
@@ -219,8 +226,9 @@ vec4 decode_diamond_tangent_with_sign(vec3 normal, int qByte, bool signPositive)
 				(needsNormal ? "irs_Normal = decodeOct24(iris_Normal);" : "") +
 				(needsNormal ? "irs_Tangent = decode_diamond_tangent_with_sign(irs_Normal, (int(iris_Normal >> 24u)), (a_LightAndData.z & 1u) != 0u);" : "") +
 				"_draw_id = a_LightAndData[3];" +
-				"int chunkFade = u_chunkFades[int(_draw_id) >> 2][int(_draw_id) & 3];" +
-				"float fade = clamp(float(iris_CurrentTime - chunkFade) * chunkFadeTimeInv, 0.0, 1.0);" +
+				"int chunkId = int(_draw_id);" +
+				"int chunkFade = texelFetch(u_SectionTimeInfo, int((u_RegionID * 256u) + uint(chunkId))).r;" +
+				"float fade = clamp(float(u_CurrentTime - chunkFade) * u_FadePeriodInv, 0.0, 1.0);" +
 				"mc_chunkFade = (chunkFade < 0) ? 1.0 : fade; }",
 
 			"uvec3 _get_relative_chunk_coord(uint pos) {\n" +

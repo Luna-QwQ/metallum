@@ -1,6 +1,10 @@
 package net.irisshaders.iris.pipeline.programs;
 
+import net.irisshaders.iris.pipeline.transform.Patch;
+import net.irisshaders.iris.pipeline.transform.PatchShaderType;
+
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
@@ -11,13 +15,13 @@ import java.util.function.Function;
 public class ShaderLoadingMap {
 	private final ShaderSupplier[] shaders;
 
-	public ShaderLoadingMap(Function<ShaderKey, ShaderSupplier> factory) {
+	public ShaderLoadingMap(BiFunction<ShaderKey, Patch, ShaderSupplier> factory) {
 		ShaderKey[] ids = ShaderKey.values();
 
 		this.shaders = new ShaderSupplier[ids.length];
 
 		for (int i = 0; i < ids.length; i++) {
-			this.shaders[i] = factory.apply(ids[i]);
+			this.shaders[i] = factory.apply(ids[i], ids[i].patch);
 		}
 	}
 

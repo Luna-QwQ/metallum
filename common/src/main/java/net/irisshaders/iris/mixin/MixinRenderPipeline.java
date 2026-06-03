@@ -4,7 +4,9 @@ import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
 import net.irisshaders.iris.Iris;
+import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
 import net.irisshaders.iris.vertices.ImmediateState;
 import net.irisshaders.iris.vertices.IrisVertexFormats;
 import net.minecraft.client.renderer.ShaderDefines;
@@ -33,6 +35,8 @@ public class MixinRenderPipeline {
 				cir.setReturnValue(IrisVertexFormats.GLYPH);
 			} else if (Objects.equals(vf, DefaultVertexFormat.ENTITY)) {
 				cir.setReturnValue(IrisVertexFormats.ENTITY);
+			} else if (Objects.equals(vf, ChunkMeshFormats.COMPACT.getVertexFormat())) {
+				cir.setReturnValue(WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat());
 			}
 		}
 	}
@@ -47,7 +51,9 @@ public class MixinRenderPipeline {
 				cir.setReturnValue(new VertexFormat[] { IrisVertexFormats.GLYPH });
 			} else if (Objects.equals(vf, DefaultVertexFormat.ENTITY)) {
 				cir.setReturnValue(new VertexFormat[] { IrisVertexFormats.ENTITY });
-			}
+			} else if (Objects.equals(vf, ChunkMeshFormats.COMPACT.getVertexFormat())) {
+                cir.setReturnValue(new VertexFormat[] { WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat() });
+            }
 		}
 	}
 }

@@ -2,6 +2,8 @@ package net.irisshaders.iris.gl.state;
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
+import net.irisshaders.iris.uniforms.CapturedRenderingState;
 
 public class ShaderAttributeInputs {
 	private boolean ie;
@@ -21,6 +23,11 @@ public class ShaderAttributeInputs {
 		this.glint = glint;
 
 		this.newLines = isLines;
+
+        if (format == null) {
+            // Sodium. Get current.
+            format = WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat();
+        }
 
 		format.getElements().forEach(n -> {
 			var name = n.name();

@@ -2,18 +2,15 @@ package net.irisshaders.iris.pipeline.programs;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Ints;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonSyntaxException;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.serialization.JsonOps;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.shader.ShaderCompileException;
 import net.irisshaders.iris.gl.shader.ShaderType;
+import net.irisshaders.iris.pipeline.transform.Patch;
 import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import net.irisshaders.iris.gl.blending.AlphaTest;
 import net.irisshaders.iris.gl.blending.BlendModeOverride;
@@ -28,6 +25,7 @@ import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.pipeline.transform.ShaderPrinter;
 import net.irisshaders.iris.pipeline.transform.TransformPatcher;
 import net.irisshaders.iris.shaderpack.loading.ProgramId;
+import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
 import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 import net.irisshaders.iris.shadows.ShadowRenderTargets;
 import net.irisshaders.iris.uniforms.CommonUniforms;
@@ -35,9 +33,7 @@ import net.irisshaders.iris.uniforms.FrameUpdateNotifier;
 import net.irisshaders.iris.uniforms.VanillaUniforms;
 import net.irisshaders.iris.uniforms.builtin.BuiltinReplacementUniforms;
 import net.irisshaders.iris.uniforms.custom.CustomUniforms;
-import net.irisshaders.iris.platform.IrisPlatformHelpers;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.ShaderManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackLocationInfo;
@@ -58,26 +54,43 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public class ShaderCreator {
 	public static ShaderSupplier create(WorldRenderingPipeline pipeline, String name, ShaderKey shaderKey, ProgramSource source, ProgramId programId, GlFramebuffer writingToBeforeTranslucent,
-										GlFramebuffer writingToAfterTranslucent, AlphaTest fallbackAlpha,
-										VertexFormat vertexFormat, ShaderAttributeInputs inputs, FrameUpdateNotifier updateNotifier,
-										IrisRenderingPipeline parent, Supplier<ImmutableSet<Integer>> flipped, FogMode fogMode, boolean isIntensity,
-										boolean isFullbright, boolean isShadowPass, boolean isLines, CustomUniforms customUniforms) throws IOException {
+                                        GlFramebuffer writingToAfterTranslucent, AlphaTest fallbackAlpha,
+                                        VertexFormat vertexFormat, ShaderAttributeInputs inputs, FrameUpdateNotifier updateNotifier,
+                                        IrisRenderingPipeline parent, Supplier<ImmutableSet<Integer>> flipped, FogMode fogMode, boolean isIntensity,
+                                        boolean isFullbright, boolean isShadowPass, boolean isLines, CustomUniforms customUniforms, Patch patch) throws IOException {
 		AlphaTest alpha = source.getDirectives().getAlphaTestOverride().orElse(fallbackAlpha);
 		BlendModeOverride blendModeOverride = source.getDirectives().getBlendModeOverride().orElse(programId.getBlendModeOverride());
 
-		Map<PatchShaderType, String> transformed = TransformPatcher.patchVanilla(
-			name,
-			source.getVertexSource().orElseThrow(RuntimeException::new),
-			source.getGeometrySource().orElse(null),
-			source.getTessControlSource().orElse(null),
-			source.getTessEvalSource().orElse(null),
-			source.getFragmentSource().orElseThrow(RuntimeException::new),
-			alpha, isLines, shaderKey == ShaderKey.CLOUDS, true, inputs, pipeline.getTextureMap());
+
+        if (vertexFormat == null) {
+            // Sodium. Get current.
+            vertexFormat = WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat();
+        }
+		Map<PatchShaderType, String> transformed;
+
+        if (patch == Patch.SODIUM) {
+            transformed = TransformPatcher.patchSodium(
+                    name,
+                    source.getVertexSource().orElseThrow(RuntimeException::new),
+                    source.getGeometrySource().orElse(null),
+                    source.getTessControlSource().orElse(null),
+                    source.getTessEvalSource().orElse(null),
+                    source.getFragmentSource().orElseThrow(RuntimeException::new),
+                    alpha, pipeline.getTextureMap());
+        } else {
+            transformed = TransformPatcher.patchVanilla(
+                    name,
+                    source.getVertexSource().orElseThrow(RuntimeException::new),
+                    source.getGeometrySource().orElse(null),
+                    source.getTessControlSource().orElse(null),
+                    source.getTessEvalSource().orElse(null),
+                    source.getFragmentSource().orElseThrow(RuntimeException::new),
+                    alpha, isLines, shaderKey == ShaderKey.CLOUDS, true, inputs, pipeline.getTextureMap());
+        }
 		String vertex = transformed.get(PatchShaderType.VERTEX);
 		String geometry = transformed.get(PatchShaderType.GEOMETRY);
 		String tessControl = transformed.get(PatchShaderType.TESS_CONTROL);
@@ -150,16 +163,17 @@ public class ShaderCreator {
 		PartialShader id = link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false);
 
 
-		return new ShaderSupplier(shaderKey, id, () -> {
+        VertexFormat finalVertexFormat = vertexFormat;
+        return new ShaderSupplier(shaderKey, id, () -> {
 			try {
-				return new ExtendedShader(id.getFinally(), name, vertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
+				return new ExtendedShader(id.getFinally(), name, finalVertexFormat, tessControl != null || tessEval != null, writingToBeforeTranslucent, writingToAfterTranslucent, blendModeOverride, alpha, uniforms -> {
 					CommonUniforms.addDynamicUniforms(uniforms, FogMode.PER_VERTEX);
 					customUniforms.assignTo(uniforms);
 					BuiltinReplacementUniforms.addBuiltinReplacementUniforms(uniforms);
 					VanillaUniforms.addVanillaUniforms(uniforms);
 				}, (samplerHolder, imageHolder) -> {
 					parent.addGbufferOrShadowSamplers(samplerHolder, imageHolder, flipped, isShadowPass, inputs.hasTex(), inputs.hasLight(), inputs.hasOverlay());
-				}, isIntensity, parent, overrides, customUniforms);
+				}, isIntensity, parent, overrides, customUniforms, patch);
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}
@@ -234,6 +248,10 @@ public class ShaderCreator {
 												boolean isGlint, boolean isText, boolean intensityTex, boolean isFullbright) throws IOException {
 		ShaderAttributeInputs inputs = new ShaderAttributeInputs(vertexFormat, isFullbright, false, isGlint, isText, false);
 
+        if (vertexFormat == null) {
+            // Sodium. Get current.
+            vertexFormat = WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat();
+        }
 		// TODO: Is this check sound in newer versions?
 		boolean isLeash = vertexFormat == DefaultVertexFormat.POSITION_COLOR_LIGHTMAP;
 		String vertex = ShaderSynthesizer.vsh(true, inputs, fogMode, entityLighting, isLeash);
@@ -248,12 +266,13 @@ public class ShaderCreator {
 		PartialShader id = link(name, vertex, null, null, null, fragment, vertexFormat, true);
 
 		// TODO 24w34a FALLBACK
-		return new ShaderSupplier(shaderKey, id, () -> {
+        VertexFormat finalVertexFormat = vertexFormat;
+        return new ShaderSupplier(shaderKey, id, () -> {
 			try {
 				GLDebug.nameObject(KHRDebug.GL_PROGRAM, id.program(), name + "_fallback");
 
 				// TODO 1.21.5 (oh no)
-				return new FallbackShader(id.getFinally(), RenderPipelines.ENTITY_CUTOUT, name, vertexFormat, writingToBeforeTranslucent,
+				return new FallbackShader(id.getFinally(), RenderPipelines.ENTITY_CUTOUT, name, finalVertexFormat, writingToBeforeTranslucent,
 					writingToAfterTranslucent, blendModeOverride, alpha.reference(), parent);
 			} catch (IOException e) {
 				throw new RuntimeException(e);
@@ -267,6 +286,10 @@ public class ShaderCreator {
 												boolean isGlint, boolean isText, boolean intensityTex, boolean isFullbright) throws IOException {
 		ShaderAttributeInputs inputs = new ShaderAttributeInputs(vertexFormat, isFullbright, false, isGlint, isText, false);
 
+        if (vertexFormat == null) {
+            // Sodium. Get current.
+            vertexFormat = WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat();
+        }
 		// TODO: Is this check sound in newer versions?
 		boolean isLeash = vertexFormat == DefaultVertexFormat.POSITION_COLOR_LIGHTMAP;
 		String vertex = ShaderSynthesizer.vsh(true, inputs, fogMode, entityLighting, isLeash);
@@ -280,11 +303,12 @@ public class ShaderCreator {
 		PartialShader id = link(name, vertex, null, null, null, fragment, vertexFormat, true);
 
 		// TODO 24w34a FALLBACK
-		return new ShaderSupplier(shaderKey, id, () -> {
+        VertexFormat finalVertexFormat = vertexFormat;
+        return new ShaderSupplier(shaderKey, id, () -> {
 			try {
 				// TODO: Fix
 				GlFramebuffer framebuffer = shadowSupplier.get().createShadowFramebuffer(ImmutableSet.of(), new int[]{0});
-				return new FallbackShader(id.getFinally(), RenderPipelines.ENTITY_CUTOUT, name, vertexFormat, framebuffer, framebuffer, blendModeOverride, alpha.reference(), parent);
+				return new FallbackShader(id.getFinally(), RenderPipelines.ENTITY_CUTOUT, name, finalVertexFormat, framebuffer, framebuffer, blendModeOverride, alpha.reference(), parent);
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}
@@ -292,20 +316,35 @@ public class ShaderCreator {
 	}
 
 	public static ShaderSupplier createShadow(WorldRenderingPipeline pipeline, String name, ShaderKey shaderKey, ProgramSource source, ProgramId programId, Supplier<ShadowRenderTargets> shadowSupplier, AlphaTest fallbackAlpha,
-											  VertexFormat vertexFormat, ShaderAttributeInputs inputs, FrameUpdateNotifier updateNotifier,
-											  IrisRenderingPipeline parent, Supplier<ImmutableSet<Integer>> flipped, FogMode fogMode, boolean isIntensity,
-											  boolean isFullbright, boolean isShadowPass, boolean isLines, CustomUniforms customUniforms) throws IOException {
+                                              VertexFormat vertexFormat, ShaderAttributeInputs inputs, FrameUpdateNotifier updateNotifier,
+                                              IrisRenderingPipeline parent, Supplier<ImmutableSet<Integer>> flipped, FogMode fogMode, boolean isIntensity,
+                                              boolean isFullbright, boolean isShadowPass, boolean isLines, CustomUniforms customUniforms, Patch patchType) throws IOException {
 		AlphaTest alpha = source.getDirectives().getAlphaTestOverride().orElse(fallbackAlpha);
 		BlendModeOverride blendModeOverride = source.getDirectives().getBlendModeOverride().orElse(programId.getBlendModeOverride());
-
-		Map<PatchShaderType, String> transformed = TransformPatcher.patchVanilla(
-			name,
-			source.getVertexSource().orElseThrow(RuntimeException::new),
-			source.getGeometrySource().orElse(null),
-			source.getTessControlSource().orElse(null),
-			source.getTessEvalSource().orElse(null),
-			source.getFragmentSource().orElseThrow(RuntimeException::new),
-			alpha, isLines, shaderKey == ShaderKey.CLOUDS, true, inputs, pipeline.getTextureMap());
+        if (vertexFormat == null) {
+            // Sodium. Get current.
+            vertexFormat = WorldRenderingSettings.INSTANCE.getVertexFormat().getVertexFormat();
+        }
+        Map<PatchShaderType, String> transformed;
+        if (patchType == Patch.SODIUM) {
+            transformed = TransformPatcher.patchSodium(
+                    name,
+                    source.getVertexSource().orElseThrow(RuntimeException::new),
+                    source.getGeometrySource().orElse(null),
+                    source.getTessControlSource().orElse(null),
+                    source.getTessEvalSource().orElse(null),
+                    source.getFragmentSource().orElseThrow(RuntimeException::new),
+                    alpha, pipeline.getTextureMap());
+        } else {
+            transformed = TransformPatcher.patchVanilla(
+                    name,
+                    source.getVertexSource().orElseThrow(RuntimeException::new),
+                    source.getGeometrySource().orElse(null),
+                    source.getTessControlSource().orElse(null),
+                    source.getTessEvalSource().orElse(null),
+                    source.getFragmentSource().orElseThrow(RuntimeException::new),
+                    alpha, isLines, shaderKey == ShaderKey.CLOUDS, true, inputs, pipeline.getTextureMap());
+        }
 		String vertex = transformed.get(PatchShaderType.VERTEX);
 		String geometry = transformed.get(PatchShaderType.GEOMETRY);
 		String tessControl = transformed.get(PatchShaderType.TESS_CONTROL);
@@ -327,17 +366,18 @@ public class ShaderCreator {
 		PartialShader id = link(name, vertex, geometry, tessControl, tessEval, fragment, vertexFormat, false);
 
 
-		return new ShaderSupplier(shaderKey, id, () -> {
+        VertexFormat finalVertexFormat = vertexFormat;
+        return new ShaderSupplier(shaderKey, id, () -> {
 			GlFramebuffer framebuffer = shadowSupplier.get().createShadowFramebuffer(ImmutableSet.of(), source.getDirectives().hasUnknownDrawBuffers() ? new int[]{0, 1} : source.getDirectives().getDrawBuffers());
 			try {
-				return new ExtendedShader(id.getFinally(), name, vertexFormat, tessControl != null || tessEval != null, framebuffer, framebuffer, blendModeOverride, alpha, uniforms -> {
+				return new ExtendedShader(id.getFinally(), name, finalVertexFormat, tessControl != null || tessEval != null, framebuffer, framebuffer, blendModeOverride, alpha, uniforms -> {
 					CommonUniforms.addDynamicUniforms(uniforms, FogMode.PER_VERTEX);
 					customUniforms.assignTo(uniforms);
 					BuiltinReplacementUniforms.addBuiltinReplacementUniforms(uniforms);
 					VanillaUniforms.addVanillaUniforms(uniforms);
 				}, (samplerHolder, imageHolder) -> {
 					parent.addGbufferOrShadowSamplers(samplerHolder, imageHolder, flipped, isShadowPass, inputs.hasTex(), inputs.hasLight(), inputs.hasOverlay());
-				}, isIntensity, parent, overrides, customUniforms);
+				}, isIntensity, parent, overrides, customUniforms, patchType);
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}

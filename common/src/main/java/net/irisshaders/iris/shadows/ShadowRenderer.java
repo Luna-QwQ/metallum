@@ -1,7 +1,6 @@
 package net.irisshaders.iris.shadows;
 
 import com.google.common.collect.ImmutableList;
-import net.caffeinemc.mods.sodium.client.gl.device.RenderDevice;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.AddressMode;
@@ -481,22 +480,17 @@ public class ShadowRenderer {
 			sodiumWorldRenderer.scheduleTerrainUpdate();
 
 			// Sodium replaces LevelExtractor's frustum path with SodiumWorldRenderer.setupTerrain().
-			RenderDevice.enterManagedCode();
-			try {
-				Frustum shadowFrustum = terrainFrustumHolder.getFrustum();
-				sodiumWorldRenderer.setupTerrain(
-					playerCamera,
-					((ViewportProvider) shadowFrustum).sodium$createViewport(),
-					((FogStorage) client.gameRenderer).sodium$getFogParameters(),
-					playerCamera.entity() != null && playerCamera.entity().isSpectator(),
-					false,
-					((FrustumAccessor) shadowFrustum).sodium$getMatrix()
-				);
-			} finally {
-				RenderDevice.exitManagedCode();
-			}
+            Frustum shadowFrustum = terrainFrustumHolder.getFrustum();
+            sodiumWorldRenderer.setupTerrain(
+                playerCamera,
+                ((ViewportProvider) shadowFrustum).sodium$createViewport(),
+                ((FogStorage) client.gameRenderer).sodium$getFogParameters(),
+                playerCamera.entity() != null && playerCamera.entity().isSpectator(),
+                false,
+                ((FrustumAccessor) shadowFrustum).sodium$getMatrix()
+            );
 
-			// Don't forget to increment the frame counter! This variable is arbitrary and only used in terrain setup,
+            // Don't forget to increment the frame counter! This variable is arbitrary and only used in terrain setup,
 			// and if it's not incremented, the vanilla culling code will get confused and think that it's already seen
 			// chunks during traversal, and break rendering in concerning ways.
 			//worldRenderer.setFrameId(worldRenderer.getFrameId() + 1);
