@@ -80,6 +80,8 @@ jobs:
           loaders: fabric
           game-versions: ${{ steps.meta.outputs.minecraft_version }}
           files: ${{ steps.meta.outputs.main_jar }}
+          dependencies: |
+            [{ "project_id": "AANobbMI", "dependency_type": "optional" }]
 
       - name: create GitHub release
         uses: softprops/action-gh-release@v2
