@@ -301,7 +301,7 @@ final class MetalRenderPass implements RenderPassBackend {
         bindDrawState(enc);
 
         if (primitiveType == MTLPrimitiveType.TriangleFan) {
-            drawTriangleFan(firstVertex, vertexCount, instanceCount);
+            drawTriangleFan(enc, firstVertex, vertexCount, instanceCount);
         } else {
             enc.drawPrimitives(primitiveType, firstVertex, vertexCount, Math.max(1, instanceCount));
         }
@@ -415,7 +415,7 @@ final class MetalRenderPass implements RenderPassBackend {
         return MetalCommandEncoder.castBuffer(indexBuffer);
     }
 
-    private void drawTriangleFan(final int firstVertex, final int vertexCount, final int instanceCount) {
+    private void drawTriangleFan(MTLRenderCommandEncoder encoder, final int firstVertex, final int vertexCount, final int instanceCount) {
         int triangleCount = vertexCount - 2;
         int indexCount = triangleCount * 3;
         MTLIndexType fanIndexType = vertexCount - 1 <= 0xFFFF ? MTLIndexType.UInt16 : MTLIndexType.UInt32;
@@ -437,7 +437,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 }
             }
             GpuBufferSlice slice = mapped.slice();
-            renderEncoder().drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, MetalCommandEncoder.castBuffer(slice.buffer()).nativeHandle(), slice.offset(), Math.max(1, instanceCount), firstVertex);
+            encoder.drawIndexedPrimitives(MTLPrimitiveType.Triangle, indexCount, fanIndexType, MetalCommandEncoder.castBuffer(slice.buffer()).nativeHandle(), slice.offset(), Math.max(1, instanceCount), firstVertex);
         }
     }
 

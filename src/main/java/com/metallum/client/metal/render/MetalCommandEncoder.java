@@ -28,6 +28,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     private final MetalDevice device;
     private long currentSubmitIndex = MAX_SUBMITS_IN_FLIGHT;
     private final InFlight[] inFlight = new InFlight[MAX_SUBMITS_IN_FLIGHT];
+    private final MemorySegment[] submitSemaphores = new MemorySegment[MAX_SUBMITS_IN_FLIGHT];
     private final MetalDestructionQueue destroyQueue = new MetalDestructionQueue(MAX_SUBMITS_IN_FLIGHT);
     private final MetalTransientMemory transientMemory;
     private final Map<MetalGpuTexture, Vector4fc> pendingColorClears = new IdentityHashMap<>();
@@ -48,6 +49,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         fence = MetalNativeBridge.metallum_create_fence(device.metalDeviceHandle());
         if (MetalNativeBridge.isNullHandle(fence)) {
             throw new IllegalStateException("Failed to allocate MTLFence");
+        }
+        for (int slot = 0; slot < MAX_SUBMITS_IN_FLIGHT; slot++) {
+            submitSemaphores[slot] = MetalNativeBridge.metallum_create_semaphore();
+            if (MetalNativeBridge.isNullHandle(submitSemaphores[slot])) {
+                throw new IllegalStateException("Failed to allocate submit semaphore");
+            }
         }
     }
 
@@ -96,11 +103,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         submitRenderPass();
         endEncoder();
 
-        commandBuffer.commit();
         int slot = (int) (currentSubmitIndex % MAX_SUBMITS_IN_FLIGHT);
+        MemorySegment completedSemaphore = submitSemaphores[slot];
+        commandBuffer.commitWithSignal(completedSemaphore);
 
         InFlight toClose = inFlight[slot];
-        inFlight[slot] = new InFlight(currentSubmitIndex, commandBuffer);
+        inFlight[slot] = new InFlight(currentSubmitIndex, commandBuffer, completedSemaphore);
         commandBuffer = null;
         currentSubmitIndex++;
 
@@ -489,7 +497,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         }
         for (InFlight f : inFlight) {
             if (f != null && f.index == submitIndex) {
-                return f.buffer.waitUntilCompleted(timeoutMs);
+                return MetalNativeBridge.metallum_semaphore_wait(f.completedSemaphore, Math.max(timeoutMs, 0L)) == 0;
             }
         }
         return true;
@@ -498,9 +506,17 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     void close() {
         submitRenderPass();
         endEncoder();
-        for (InFlight f : inFlight) {
+        for (int slot = 0; slot < inFlight.length; slot++) {
+            InFlight f = inFlight[slot];
             if (f != null) {
                 f.buffer.close();
+                inFlight[slot] = null;
+            }
+        }
+        for (int slot = 0; slot < submitSemaphores.length; slot++) {
+            if (!MetalNativeBridge.isNullHandle(submitSemaphores[slot])) {
+                MetalNativeBridge.metallum_release_object(submitSemaphores[slot]);
+                submitSemaphores[slot] = MemorySegment.NULL;
             }
         }
         if (commandBuffer != null) {
@@ -595,6 +611,6 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 && height == depth.getHeight(0);
     }
 
-    private record InFlight(long index, MTLCommandBuffer buffer) {
+    private record InFlight(long index, MTLCommandBuffer buffer, MemorySegment completedSemaphore) {
     }
 }

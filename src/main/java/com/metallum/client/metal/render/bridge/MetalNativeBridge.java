@@ -50,6 +50,9 @@ public final class MetalNativeBridge {
             MTLDeviceMakeCommandQueue = downcall(lookup, "metallum_MTLDevice_makeCommandQueue", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
             MTLCommandQueueMakeCommandBuffer = downcall(lookup, "metallum_MTLCommandQueue_makeCommandBuffer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
             MTLCommandBufferCommit = downcall(lookup, "metallum_MTLCommandBuffer_commit", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            createSemaphore = downcall(lookup, "metallum_create_semaphore", FunctionDescriptor.of(ValueLayout.ADDRESS));
+            MTLCommandBufferCommitWithSignal = downcall(lookup, "metallum_MTLCommandBuffer_commitWithSignal", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            semaphoreWait = downcallWithoutCritical(lookup, "metallum_semaphore_wait", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG));
             MTLCommandBufferIsCompleted = downcall(lookup, "metallum_MTLCommandBuffer_isCompleted", FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
             MTLCommandBufferWaitUntilCompleted = downcallWithoutCritical(lookup, "metallum_MTLCommandBuffer_waitUntilCompleted", FunctionDescriptor.of(INT, ValueLayout.ADDRESS, LONG));
             MTLCommandBufferPushDebugGroup = downcall(lookup, "metallum_MTLCommandBuffer_pushDebugGroup", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -248,6 +251,9 @@ public final class MetalNativeBridge {
     private static final MethodHandle MTLDeviceMakeCommandQueue;
     private static final MethodHandle MTLCommandQueueMakeCommandBuffer;
     private static final MethodHandle MTLCommandBufferCommit;
+    private static final MethodHandle createSemaphore;
+    private static final MethodHandle MTLCommandBufferCommitWithSignal;
+    private static final MethodHandle semaphoreWait;
     private static final MethodHandle MTLCommandBufferIsCompleted;
     private static final MethodHandle MTLCommandBufferWaitUntilCompleted;
     private static final MethodHandle MTLCommandBufferPushDebugGroup;
@@ -408,6 +414,30 @@ public final class MetalNativeBridge {
             MTLCommandBufferCommit.invokeExact(segment(commandBuffer));
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLCommandBuffer_commit", throwable);
+        }
+    }
+
+    public static MemorySegment metallum_create_semaphore() {
+        try {
+            return (MemorySegment) createSemaphore.invokeExact();
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_create_semaphore", throwable);
+        }
+    }
+
+    public static void MTLCommandBuffer_commitWithSignal(final MemorySegment commandBuffer, final MemorySegment semaphore) {
+        try {
+            MTLCommandBufferCommitWithSignal.invokeExact(segment(commandBuffer), segment(semaphore));
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_MTLCommandBuffer_commitWithSignal", throwable);
+        }
+    }
+
+    public static int metallum_semaphore_wait(final MemorySegment semaphore, final long timeoutMs) {
+        try {
+            return (int) semaphoreWait.invokeExact(segment(semaphore), timeoutMs);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_semaphore_wait", throwable);
         }
     }
 

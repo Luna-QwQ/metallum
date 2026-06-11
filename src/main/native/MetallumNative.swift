@@ -455,6 +455,35 @@ public func metallum_MTLCommandBuffer_commit(_ commandBuffer: MTLCommandBuffer) 
     commandBuffer.commit()
 }
 
+@_cdecl("metallum_create_semaphore")
+public func metallum_create_semaphore() -> UnsafeMutableRawPointer? {
+    retainedPointer(DispatchSemaphore(value: 0))
+}
+
+@_cdecl("metallum_MTLCommandBuffer_commitWithSignal")
+public func metallum_MTLCommandBuffer_commitWithSignal(_ commandBuffer: MTLCommandBuffer, _ semaphore: DispatchSemaphore) {
+    while semaphore.wait(timeout: .now()) == .success {}
+    commandBuffer.addCompletedHandler { _ in
+        semaphore.signal()
+    }
+    commandBuffer.commit()
+}
+
+@_cdecl("metallum_semaphore_wait")
+public func metallum_semaphore_wait(_ semaphore: DispatchSemaphore, _ timeoutMs: UInt64) -> Int32 {
+    let result: DispatchTimeoutResult
+    if timeoutMs >= UInt64(Int.max) {
+        result = semaphore.wait(timeout: .distantFuture)
+    } else {
+        result = semaphore.wait(timeout: .now() + .milliseconds(Int(timeoutMs)))
+    }
+    guard result == .success else {
+        return 1
+    }
+    semaphore.signal()
+    return 0
+}
+
 @_cdecl("metallum_MTLCommandBuffer_isCompleted")
 public func metallum_MTLCommandBuffer_isCompleted(_ commandBuffer: MTLCommandBuffer) -> Int32 {
     commandBuffer.status == .completed || commandBuffer.status == .error ? 1 : 0

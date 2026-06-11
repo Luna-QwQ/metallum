@@ -94,6 +94,10 @@ public final class MTLCommandBuffer {
         MetalNativeBridge.MTLCommandBuffer_commit(handle());
     }
 
+    public void commitWithSignal(final MemorySegment semaphore) {
+        MetalNativeBridge.MTLCommandBuffer_commitWithSignal(handle(), semaphore);
+    }
+
     public boolean isCompleted() {
         if (MetalNativeBridge.isNullHandle(handle)) {
             return true;
