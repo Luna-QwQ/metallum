@@ -1,11 +1,15 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLSamplerAddressMode;
+import com.metallum.client.metal.render.mtl.MTLSamplerMinMagFilter;
+import com.metallum.client.metal.render.mtl.MTLSamplerMipFilter;
 import com.mojang.blaze3d.textures.AddressMode;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.jspecify.annotations.NonNull;
 
 import java.lang.foreign.MemorySegment;
 import java.util.OptionalDouble;
@@ -34,10 +38,10 @@ final class MetalGpuSampler extends GpuSampler {
         this.device = device;
         this.nativeHandle = MetalNativeBridge.metallum_create_sampler(
                 device.metalDeviceHandle(),
-                toMtlAddressMode(addressModeU),
-                toMtlAddressMode(addressModeV),
-                toMtlMinMagFilter(minFilter),
-                toMtlMinMagFilter(magFilter),
+                MTLSamplerAddressMode.from(addressModeU),
+                MTLSamplerAddressMode.from(addressModeV),
+                MTLSamplerMinMagFilter.from(minFilter),
+                MTLSamplerMinMagFilter.from(magFilter),
                 toMtlMipFilter(maxLod),
                 Math.max(1, maxAnisotropy),
                 toMtlMaxLodClamp(maxLod)
@@ -51,22 +55,22 @@ final class MetalGpuSampler extends GpuSampler {
     }
 
     @Override
-    public AddressMode getAddressModeU() {
+    public @NonNull AddressMode getAddressModeU() {
         return this.addressModeU;
     }
 
     @Override
-    public AddressMode getAddressModeV() {
+    public @NonNull AddressMode getAddressModeV() {
         return this.addressModeV;
     }
 
     @Override
-    public FilterMode getMinFilter() {
+    public @NonNull FilterMode getMinFilter() {
         return this.minFilter;
     }
 
     @Override
-    public FilterMode getMagFilter() {
+    public @NonNull FilterMode getMagFilter() {
         return this.magFilter;
     }
 
@@ -76,7 +80,7 @@ final class MetalGpuSampler extends GpuSampler {
     }
 
     @Override
-    public OptionalDouble getMaxLod() {
+    public @NonNull OptionalDouble getMaxLod() {
         return this.maxLod;
     }
 
@@ -97,22 +101,8 @@ final class MetalGpuSampler extends GpuSampler {
         return this.nativeHandle;
     }
 
-    private static long toMtlAddressMode(final AddressMode addressMode) {
-        return switch (addressMode) {
-            case REPEAT -> 2L;
-            case CLAMP_TO_EDGE -> 1L;
-        };
-    }
-
-    private static long toMtlMinMagFilter(final FilterMode filterMode) {
-        return switch (filterMode) {
-            case NEAREST -> 0L;
-            case LINEAR -> 1L;
-        };
-    }
-
-    private static long toMtlMipFilter(final OptionalDouble maxLod) {
-        return maxLod.orElse(1000.0) > 0.25 ? 2L : 1L;
+    private static MTLSamplerMipFilter toMtlMipFilter(final OptionalDouble maxLod) {
+        return maxLod.orElse(1000.0) > 0.25 ? MTLSamplerMipFilter.Linear : MTLSamplerMipFilter.Nearest;
     }
 
     private static double toMtlMaxLodClamp(final OptionalDouble maxLod) {

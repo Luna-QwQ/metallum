@@ -1,5 +1,6 @@
 package com.metallum.client.metal.render;
 
+import com.metallum.Metallum;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BindGroupLayout.UniformDescription;
@@ -22,7 +23,9 @@ import org.lwjgl.util.spvc.SpvcReflectedResource;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -93,7 +96,7 @@ final class MetalCrossShaderCompiler {
             UniformDescription uniform = findUniform(uniforms, name);
             int dimensions = sampler.dimensions();
             if (uniform != null) {
-                if (dimensions != 5) {
+                if (dimensions != Spv.SpvDimBuffer) {
                     throw new ShaderCompileException("UTB (" + name + ") must have type of SpvDimBuffer");
                 }
                 addBindingIfAbsent(entries, VulkanBindGroupEntryType.TEXEL_BUFFER, name, uniform.gpuFormat());
@@ -101,7 +104,7 @@ final class MetalCrossShaderCompiler {
                 if (!samplers.contains(name)) {
                     throw new ShaderCompileException("Unable to find shader defined uniform (" + name + ")");
                 }
-                if (dimensions != 1 && dimensions != 3) {
+                if (dimensions != Spv.SpvDim2D && dimensions != Spv.SpvDimCube) {
                     throw new ShaderCompileException("Sampled texture (" + name + ") must have type of SpvDim2D or SpvDimCube");
                 }
                 addBindingIfAbsent(entries, VulkanBindGroupEntryType.SAMPLED_IMAGE, name, null);
@@ -160,7 +163,7 @@ final class MetalCrossShaderCompiler {
                 case TEXEL_BUFFER -> MetalCompiledRenderPipeline.ResourceKind.TEXEL_BUFFER;
             };
             GpuFormat texelFormat = entry.type() == VulkanBindGroupLayout.VulkanBindGroupEntryType.TEXEL_BUFFER ? entry.texelBufferFormat() : null;
-            resources.add(new MetalCompiledRenderPipeline.ResourceBinding(kind, entry.name(), index, stageMask(kind, index, vertexMsl.source(), fragmentMsl.source()), texelFormat));
+            resources.add(new MetalCompiledRenderPipeline.ResourceBinding(kind, entry.name(), index, stageMask(entry.name(), kind, index, vertexMsl, fragmentMsl), texelFormat));
         }
 
         int pushConstantStageMask = (vertexMsl.hasPushConstants() ? MetalCompiledRenderPipeline.STAGE_VERTEX : 0)
@@ -178,24 +181,24 @@ final class MetalCrossShaderCompiler {
     }
 
     private static int stageMask(
+            final String name,
             final MetalCompiledRenderPipeline.ResourceKind kind,
             final int bindingIndex,
-            final String vertexMsl,
-            final String fragmentMsl
+            final MslShader vertexMsl,
+            final MslShader fragmentMsl
     ) {
-        String resourceAttribute = switch (kind) {
-            case UNIFORM_BUFFER -> "buffer";
-            case TEXEL_BUFFER, SAMPLED_IMAGE -> "texture";
-        };
-        String marker = "[[" + resourceAttribute + "(" + bindingIndex + ")]]";
         int mask = 0;
-        if (vertexMsl.contains(marker)) {
+        if (vertexMsl.activeResources().contains(name)) {
             mask |= MetalCompiledRenderPipeline.STAGE_VERTEX;
         }
-        if (fragmentMsl.contains(marker)) {
+        if (fragmentMsl.activeResources().contains(name)) {
             mask |= MetalCompiledRenderPipeline.STAGE_FRAGMENT;
         }
-        return mask == 0 ? MetalCompiledRenderPipeline.STAGE_ALL : mask;
+        if (mask == 0) {
+            mask = MetalCompiledRenderPipeline.STAGE_ALL;
+        }
+
+        return mask;
     }
 
     private static MslShader spirvToMsl(final ByteBuffer spirvBytes, final int pushConstantBinding) throws ShaderCompileException {
@@ -241,6 +244,8 @@ final class MetalCrossShaderCompiler {
                 );
                 checkSpvc(Spvc.spvc_compiler_install_compiler_options(compiler, options), "spvc_compiler_install_compiler_options");
 
+                Set<String> activeResources = collectActiveResourceNames(stack, compiler);
+
                 PointerBuffer pResources = stack.mallocPointer(1);
                 checkSpvc(Spvc.spvc_compiler_create_shader_resources(compiler, pResources), "spvc_compiler_create_shader_resources");
                 long resources = pResources.get(0);
@@ -256,14 +261,52 @@ final class MetalCrossShaderCompiler {
 
                 PointerBuffer pSource = stack.mallocPointer(1);
                 checkSpvc(Spvc.spvc_compiler_compile(compiler, pSource), "spvc_compiler_compile");
-                return new MslShader(MemoryUtil.memUTF8(pSource.get(0)), hasPushConstants);
+                return new MslShader(MemoryUtil.memUTF8(pSource.get(0)), hasPushConstants, activeResources);
             } finally {
                 Spvc.spvc_context_destroy(context);
             }
         }
     }
 
-    record MslShader(String source, boolean hasPushConstants) {
+    record MslShader(String source, boolean hasPushConstants, Set<String> activeResources) {
+    }
+
+    private static Set<String> collectActiveResourceNames(final MemoryStack stack, final long compiler) throws ShaderCompileException {
+        PointerBuffer pActiveSet = stack.mallocPointer(1);
+        checkSpvc(Spvc.spvc_compiler_get_active_interface_variables(compiler, pActiveSet), "spvc_compiler_get_active_interface_variables");
+
+        PointerBuffer pResources = stack.mallocPointer(1);
+        checkSpvc(
+                Spvc.spvc_compiler_create_shader_resources_for_active_variables(compiler, pResources, pActiveSet.get(0)),
+                "spvc_compiler_create_shader_resources_for_active_variables"
+        );
+        long resources = pResources.get(0);
+
+        Set<String> names = new HashSet<>();
+        collectResourceNames(stack, resources, Spvc.SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, names);
+        collectResourceNames(stack, resources, Spvc.SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, names);
+        collectResourceNames(stack, resources, Spvc.SPVC_RESOURCE_TYPE_SEPARATE_IMAGE, names);
+        collectResourceNames(stack, resources, Spvc.SPVC_RESOURCE_TYPE_SEPARATE_SAMPLERS, names);
+        return names;
+    }
+
+    private static void collectResourceNames(
+            final MemoryStack stack,
+            final long resources,
+            final int resourceType,
+            final Set<String> out
+    ) throws ShaderCompileException {
+        PointerBuffer pList = stack.mallocPointer(1);
+        PointerBuffer pCount = stack.mallocPointer(1);
+        checkSpvc(Spvc.spvc_resources_get_resource_list_for_type(resources, resourceType, pList, pCount), "spvc_resources_get_resource_list_for_type");
+        int count = (int) pCount.get(0);
+        if (count == 0) {
+            return;
+        }
+        SpvcReflectedResource.Buffer list = SpvcReflectedResource.create(pList.get(0), count);
+        for (int i = 0; i < count; i++) {
+            out.add(list.get(i).nameString());
+        }
     }
 
     private static void checkSpvc(final int result, final String stage) throws ShaderCompileException {

@@ -73,28 +73,6 @@ private func stencilPixelFormat(for depthFormat: MTLPixelFormat) -> MTLPixelForm
     }
 }
 
-private func samplerAddressMode(from code: UInt64) -> MTLSamplerAddressMode {
-    switch code {
-    case 2: return .repeat
-    default: return .clampToEdge
-    }
-}
-
-private func samplerMinMagFilter(from code: UInt64) -> MTLSamplerMinMagFilter {
-    switch code {
-    case 1: return .linear
-    default: return .nearest
-    }
-}
-
-private func samplerMipFilter(from code: UInt64) -> MTLSamplerMipFilter {
-    switch code {
-    case 1: return .nearest
-    case 2: return .linear
-    default: return .notMipmapped
-    }
-}
-
 private func makeClearColor(red: Float, green: Float, blue: Float, alpha: Float) -> MTLClearColor {
     MTLClearColor(red: Double(red), green: Double(green), blue: Double(blue), alpha: Double(alpha))
 }
@@ -799,21 +777,21 @@ private func roundUp(_ value: Int, alignment: Int) -> Int {
 @_cdecl("metallum_create_sampler")
 public func metallum_create_sampler(
     _ device: MTLDevice,
-    _ addressModeU: UInt64,
-    _ addressModeV: UInt64,
-    _ minFilter: UInt64,
-    _ magFilter: UInt64,
-    _ mipFilter: UInt64,
+    _ addressModeU: MTLSamplerAddressMode,
+    _ addressModeV: MTLSamplerAddressMode,
+    _ minFilter: MTLSamplerMinMagFilter,
+    _ magFilter: MTLSamplerMinMagFilter,
+    _ mipFilter: MTLSamplerMipFilter,
     _ maxAnisotropy: Int32,
     _ lodMaxClamp: Double
 ) -> UnsafeMutableRawPointer? {
     return withMetalAutoreleasePool {
     let descriptor = MTLSamplerDescriptor()
-    descriptor.minFilter = samplerMinMagFilter(from: minFilter)
-    descriptor.magFilter = samplerMinMagFilter(from: magFilter)
-    descriptor.mipFilter = samplerMipFilter(from: mipFilter)
-    descriptor.sAddressMode = samplerAddressMode(from: addressModeU)
-    descriptor.tAddressMode = samplerAddressMode(from: addressModeV)
+    descriptor.minFilter = minFilter
+    descriptor.magFilter = magFilter
+    descriptor.mipFilter = mipFilter
+    descriptor.sAddressMode = addressModeU
+    descriptor.tAddressMode = addressModeV
     descriptor.maxAnisotropy = max(Int(maxAnisotropy), 1)
     descriptor.lodMinClamp = 0.0
     descriptor.lodMaxClamp = lodMaxClamp >= 0.0 && lodMaxClamp.isFinite ? Float(lodMaxClamp) : Float.greatestFiniteMagnitude

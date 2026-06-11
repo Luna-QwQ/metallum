@@ -28,8 +28,6 @@ import java.lang.foreign.MemorySegment;
 import java.nio.IntBuffer;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Supplier;
 
 @Environment(EnvType.CLIENT)
@@ -52,7 +50,7 @@ final class MetalRenderPass implements RenderPassBackend {
     private final GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[MAX_VERTEX_BUFFERS];
     private final HashMap<String, GpuBufferSlice> uniforms = new HashMap<>();
     private final HashMap<String, TextureViewAndSampler> samplers = new HashMap<>();
-    private final Set<MetalCompiledRenderPipeline.ResourceBinding> dirtyDescriptors = new HashSet<>();
+    private long dirtyDescriptorMask;
     @Nullable
     private MetalCompiledRenderPipeline compiledPipeline;
     @Nullable
@@ -277,7 +275,7 @@ final class MetalRenderPass implements RenderPassBackend {
                 draw.uniformUploaderConsumer().accept(uniformArgument, this::setUniform);
             }
 
-            if (scissorDirty || vertexBuffersDirty || !dirtyDescriptors.isEmpty() || pipelineDirty) {
+            if (scissorDirty || vertexBuffersDirty || dirtyDescriptorMask != 0L || pipelineDirty) {
                 bindDrawState(enc);
             }
             MetalGpuBuffer nativeIndexBuffer = resolveIndexBuffer();
@@ -526,13 +524,12 @@ final class MetalRenderPass implements RenderPassBackend {
             for (MetalCompiledRenderPipeline.ResourceBinding binding : compiledPipeline.resources()) {
                 pushDescriptor(enc, binding);
             }
-            dirtyDescriptors.clear();
-        } else if (!dirtyDescriptors.isEmpty()) {
-            for (MetalCompiledRenderPipeline.ResourceBinding binding : dirtyDescriptors) {
-                pushDescriptor(enc, binding);
+        } else {
+            for (long mask = dirtyDescriptorMask; mask != 0L; mask &= mask - 1L) {
+                pushDescriptor(enc, compiledPipeline.resourceByIndex(Long.numberOfTrailingZeros(mask)));
             }
-            dirtyDescriptors.clear();
         }
+        dirtyDescriptorMask = 0L;
     }
 
     private MTLPrimitiveType primitiveTopology() {
@@ -571,7 +568,7 @@ final class MetalRenderPass implements RenderPassBackend {
         if (compiledPipeline != null) {
             MetalCompiledRenderPipeline.ResourceBinding binding = compiledPipeline.resource(name);
             if (binding != null) {
-                dirtyDescriptors.add(binding);
+                dirtyDescriptorMask |= 1L << binding.bindingIndex();
             }
         }
     }

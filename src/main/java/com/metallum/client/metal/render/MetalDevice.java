@@ -1,6 +1,5 @@
 package com.metallum.client.metal.render;
 
-import com.metallum.Metallum;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.MTLCommandQueue;
 import com.mojang.blaze3d.GpuFormat;
@@ -127,7 +126,7 @@ final class MetalDevice implements GpuDeviceBackend {
 
     @Override
     public @NonNull GpuBuffer createBuffer(@Nullable final Supplier<String> label, @GpuBuffer.Usage final int usage, final ByteBuffer data) {
-        MetalGpuBuffer buffer = (MetalGpuBuffer) this.createBuffer(label, usage | 8, data.remaining());
+        MetalGpuBuffer buffer = (MetalGpuBuffer) this.createBuffer(label, usage | GpuBuffer.USAGE_COPY_DST, data.remaining());
         this.commandEncoder.writeToBuffer(buffer.slice(), data.duplicate());
         return buffer;
     }

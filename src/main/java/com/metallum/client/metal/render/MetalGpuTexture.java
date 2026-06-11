@@ -6,9 +6,9 @@ import com.metallum.client.metal.render.mtl.MTLStorageMode;
 import com.metallum.client.metal.render.mtl.MTLTextureUsage;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
-import org.joml.Vector4fc;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import org.joml.Vector4fc;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
@@ -42,14 +42,14 @@ final class MetalGpuTexture extends GpuTexture {
 
         this.nativeHandle = MetalNativeBridge.metallum_create_texture_2d(
                 device.metalDeviceHandle(),
-                this.mtlPixelFormat.value,
+                this.mtlPixelFormat,
                 width,
                 height,
                 depthOrLayers,
                 mipLevels,
                 (usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0 ? 1L : 0L,
                 toMtlTextureUsage(usage),
-                MTLStorageMode.Private.value,
+                MTLStorageMode.Private,
                 label
         );
     }

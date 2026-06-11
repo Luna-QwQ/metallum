@@ -1,7 +1,6 @@
 package com.metallum.client.metal.render.bridge;
 
-import com.metallum.client.metal.render.mtl.MTLCompareFunction;
-import com.metallum.client.metal.render.mtl.MTLPixelFormat;
+import com.metallum.client.metal.render.mtl.*;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.Nullable;
@@ -590,27 +589,27 @@ public final class MetalNativeBridge {
 
     public static MemorySegment metallum_create_texture_2d(
             final MemorySegment device,
-            final long pixelFormat,
+            final MTLPixelFormat pixelFormat,
             final long width,
             final long height,
             final long depthOrLayers,
             final long mipLevels,
             final long cubeCompatible,
             final long usage,
-            final long storageMode,
+            final MTLStorageMode storageMode,
             final String label
     ) {
         try (Arena arena = Arena.ofConfined()) {
             return (MemorySegment) createTexture2d.invokeExact(
                     segment(device),
-                    pixelFormat,
+                    pixelFormat.value,
                     width,
                     height,
                     depthOrLayers,
                     mipLevels,
                     cubeCompatible,
                     usage,
-                    storageMode,
+                    storageMode.value,
                     toCString(arena, label)
             );
         } catch (Throwable throwable) {
@@ -643,22 +642,22 @@ public final class MetalNativeBridge {
 
     public static MemorySegment metallum_create_sampler(
             final MemorySegment device,
-            final long addressModeU,
-            final long addressModeV,
-            final long minFilter,
-            final long magFilter,
-            final long mipFilter,
+            final MTLSamplerAddressMode addressModeU,
+            final MTLSamplerAddressMode addressModeV,
+            final MTLSamplerMinMagFilter minFilter,
+            final MTLSamplerMinMagFilter magFilter,
+            final MTLSamplerMipFilter mipFilter,
             final int maxAnisotropy,
             final double lodMaxClamp
     ) {
         try {
             return (MemorySegment) createSampler.invokeExact(
                     segment(device),
-                    addressModeU,
-                    addressModeV,
-                    minFilter,
-                    magFilter,
-                    mipFilter,
+                    addressModeU.value,
+                    addressModeV.value,
+                    minFilter.value,
+                    magFilter.value,
+                    mipFilter.value,
                     maxAnisotropy,
                     lodMaxClamp
             );
