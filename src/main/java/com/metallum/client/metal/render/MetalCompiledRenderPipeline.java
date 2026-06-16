@@ -3,6 +3,8 @@ package com.metallum.client.metal.render;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.metallum.client.metal.render.mtl.*;
 import com.mojang.blaze3d.GpuFormat;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.CompiledRenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.PolygonMode;
@@ -15,6 +17,7 @@ import org.jspecify.annotations.Nullable;
 import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Environment(EnvType.CLIENT)
 final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoCloseable {
@@ -122,8 +125,9 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
             return MemorySegment.NULL;
         }
 
-        var colorTarget = info.getColorTargetState();
-        var blendFunction = colorTarget.blendFunction();
+        ColorTargetState colorTarget = info.getColorTargetState();
+        Optional<BlendFunction> blendFunction = colorTarget == null ? Optional.empty() : colorTarget.blendFunction();
+        long writeMask = colorTarget == null ? MTLColorWriteMask.All.value : MTLColorWriteMask.from(colorTarget.writeMask());
 
         try (MTLRenderPipelineDescriptor pipelineDesc = new MTLRenderPipelineDescriptor()) {
             pipelineDesc.setCompiledFunctions(vertexFunction, fragmentFunction);
@@ -139,10 +143,10 @@ final class MetalCompiledRenderPipeline implements CompiledRenderPipeline, AutoC
                         MTLBlendFactor.from(function.alpha().sourceFactor()),
                         MTLBlendFactor.from(function.alpha().destFactor()),
                         MTLBlendOperation.from(function.alpha().op()),
-                        colorTarget.writeMask()
+                        writeMask
                 );
             } else {
-                pipelineDesc.disableBlending(colorTarget.writeMask());
+                pipelineDesc.disableBlending(writeMask);
             }
 
             return MetalNativeBridge.metallum_MTLDevice_makeRenderPipelineState(
