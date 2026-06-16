@@ -43,7 +43,11 @@ public class UndoReverseZFive {
 
 	@WrapOperation(method = "applyPipelineState", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_polygonOffset(FF)V"))
 	private void iris$revertPolygonOffset(float factor, float units, Operation<Void> original) {
-		original.call(-factor, -units);
+		if (Iris.isPackInUseQuick()) {
+			original.call(-factor, -units);
+		} else {
+			original.call(factor, units);
+		}
 	}
 
 	@Unique

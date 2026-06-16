@@ -1,6 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
+  "mixinextras": {"minVersion": "0.5.2"},
   "package": "net.irisshaders.iris.mixin",
   "refmap": "iris.refmap.json",
   "plugin": "net.irisshaders.iris.mixin.IrisMixinPlugin",
@@ -109,6 +110,7 @@
     "entity_render_context.MixinModelFeatureRenderer",
     "entity_render_context.MixinModelStorageTrigger",
     "entity_render_context.ItemStackStateMixin",
+    "entity_render_context.FixRenderTypeIdentityMixin",
     "entity_render_context.ItemStackStateLayerMixin",
     "fabulous.MixinDisableFabulousGraphics",
     "gui.MixinGui",

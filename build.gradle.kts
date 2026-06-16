@@ -17,7 +17,7 @@ val SODIUM_DEPENDENCY_NEO by extra { files(rootDir.resolve("custom_sodium").reso
 val PARCHMENT_VERSION by extra { null }
 
 // https://semver.org/
-val MOD_VERSION by extra { "1.11.0" }
+val MOD_VERSION by extra { "1.11.1" }
 
 allprojects {
     apply(plugin = "java")

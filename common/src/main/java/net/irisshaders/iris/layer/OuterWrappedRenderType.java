@@ -14,14 +14,11 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.WeakHashMap;
 
 public class OuterWrappedRenderType extends RenderType {
 	private static final RenderSetup FAKE_SETUP = RenderSetup.builder(RenderPipelines.GUI_TEXTURED).createRenderSetup();
-	private static final Map<RenderType, Map<RenderingWrapper, OuterWrappedRenderType>> WRAPPER_CACHE = new WeakHashMap<>();
 	private final RenderingWrapper extra;
 	private final RenderType wrapped;
 
@@ -37,9 +34,7 @@ public class OuterWrappedRenderType extends RenderType {
 			wrapped = ((OuterWrappedRenderType) wrapped).unwrap();
 		}
 
-		RenderType unwrapped = wrapped;
-		return WRAPPER_CACHE.computeIfAbsent(unwrapped, ignored -> new WeakHashMap<>())
-			.computeIfAbsent(extra, ignored -> new OuterWrappedRenderType(name, unwrapped, extra));
+		return new OuterWrappedRenderType(name, wrapped, extra);
 	}
 
 	private RenderType unwrap() {
@@ -134,7 +129,7 @@ public class OuterWrappedRenderType extends RenderType {
 	public int hashCode() {
 		// Add one so that we don't have the exact same hash as the wrapped object.
 		// This means that we won't have a guaranteed collision if we're inserted to a map alongside the unwrapped object.
-		return this.wrapped.hashCode() + this.extra.hashCode() + 1;
+		return this.wrapped.hashCode() + 1;
 	}
 
 	@Override
