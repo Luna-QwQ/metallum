@@ -17,6 +17,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -43,6 +44,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     private MemorySegment renderColorAttachment = MemorySegment.NULL;
     private MemorySegment renderDepthAttachment = MemorySegment.NULL;
     private final EncoderBindingCache bindingCache = new EncoderBindingCache();
+    private final Map<Long, java.util.ArrayDeque<MemorySegment>> dynamicBackingPool = new java.util.HashMap<>();
 
     MetalCommandEncoder(final MetalDevice device) {
         this.device = device;
@@ -303,6 +305,11 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         MetalGpuBuffer buffer = (MetalGpuBuffer) destination.buffer();
         int length = data.remaining();
 
+        if (buffer.isDynamic()) {
+            orphanWrite(buffer, destination.offset(), data);
+            return;
+        }
+
         GpuBufferSlice staging = transientMemory.uploadStaging(data, 4L, GpuBuffer.USAGE_COPY_SRC);
         MetalGpuBuffer stagingBuffer = (MetalGpuBuffer) staging.buffer();
 
@@ -315,6 +322,43 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
                 length
         );
         endEncoder();
+    }
+
+    private void orphanWrite(final MetalGpuBuffer buffer, final long offset, final ByteBuffer data) {
+        long size = buffer.allocationSize();
+        MemorySegment old = buffer.nativeHandle();
+        MemorySegment fresh = acquireDynamicBacking(size, buffer.resourceOptions());
+        ByteBuffer freshStorage = MetalNativeBridge.nativeByteBufferView(
+                MetalNativeBridge.metallum_get_buffer_contents(fresh), size).order(ByteOrder.nativeOrder());
+
+        if (offset != 0 || data.remaining() != buffer.size()) {
+            ByteBuffer previous = buffer.currentStorage();
+            previous.clear();
+            freshStorage.duplicate().put(previous);
+        }
+
+        ByteBuffer dst = freshStorage.duplicate().order(ByteOrder.nativeOrder());
+        dst.position(Math.toIntExact(offset));
+        dst.put(data.duplicate());
+
+        buffer.swapBacking(fresh, freshStorage);
+        recycleDynamicBacking(old, size);
+    }
+
+    private MemorySegment acquireDynamicBacking(final long size, final long resourceOptions) {
+        java.util.ArrayDeque<MemorySegment> bucket = dynamicBackingPool.get(size);
+        if (bucket != null && !bucket.isEmpty()) {
+            return bucket.pop();
+        }
+        MemorySegment handle = MetalNativeBridge.metallum_create_buffer(device.metalDeviceHandle(), size, resourceOptions);
+        if (MetalNativeBridge.isNullHandle(handle)) {
+            throw new IllegalStateException("Failed to create dynamic backing buffer");
+        }
+        return handle;
+    }
+
+    private void recycleDynamicBacking(final MemorySegment handle, final long size) {
+        queueForDestroy(() -> dynamicBackingPool.computeIfAbsent(size, k -> new java.util.ArrayDeque<>()).push(handle));
     }
 
     @Override
@@ -525,6 +569,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         transientMemory.close();
         device.queueResourceRelease(fence);
         destroyQueue.close();
+        for (java.util.ArrayDeque<MemorySegment> bucket : dynamicBackingPool.values()) {
+            for (MemorySegment handle : bucket) {
+                MetalNativeBridge.metallum_release_object(handle);
+            }
+        }
+        dynamicBackingPool.clear();
     }
 
     void waitForSubmittedGpuWork() {

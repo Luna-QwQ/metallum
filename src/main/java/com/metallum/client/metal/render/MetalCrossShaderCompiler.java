@@ -6,6 +6,8 @@ import com.mojang.blaze3d.pipeline.BindGroupLayout.UniformDescription;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
 import com.mojang.blaze3d.shaders.ShaderType;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.blaze3d.vulkan.VulkanBindGroupLayout;
 import com.mojang.blaze3d.vulkan.VulkanBindGroupLayout.VulkanBindGroupEntryType;
 import com.mojang.blaze3d.vulkan.glsl.*;
@@ -17,13 +19,16 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.util.spvc.Spv;
 import org.lwjgl.util.spvc.Spvc;
+import org.lwjgl.util.spvc.SpvcMslShaderInterfaceVar2;
 import org.lwjgl.util.spvc.SpvcReflectedResource;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,10 +59,10 @@ final class MetalCrossShaderCompiler {
             List<String> vertexOutputs = extractVariableNames(vertexSpirv.outputs());
 
             vertexSpirv.rebind(tolerateUnprovidedInputs(MetalPipelineSupport.vertexAttributeNames(pipeline), vertexSpirv.inputs()), layoutEntries);
-            MslShader vertexMsl = spirvToMsl(vertexSpirv.spirv(), layoutEntries.size());
+            MslShader vertexMsl = spirvToMsl(vertexSpirv.spirv(), layoutEntries.size(), vertexAttributeFormats(pipeline));
 
             fragmentSpirv.rebind(tolerateUnprovidedInputs(vertexOutputs, fragmentSpirv.inputs()), layoutEntries);
-            MslShader fragmentMsl = spirvToMsl(fragmentSpirv.spirv(), layoutEntries.size());
+            MslShader fragmentMsl = spirvToMsl(fragmentSpirv.spirv(), layoutEntries.size(), Map.of());
 
             String vertexEntryPoint = extractEntryPoint(vertexMsl.source(), VERTEX_ENTRY_PATTERN, "main0");
             String fragmentEntryPoint = extractEntryPoint(fragmentMsl.source(), FRAGMENT_ENTRY_PATTERN, "main0");
@@ -215,7 +220,70 @@ final class MetalCrossShaderCompiler {
         return mask;
     }
 
-    private static MslShader spirvToMsl(final ByteBuffer spirvBytes, final int pushConstantBinding) throws ShaderCompileException {
+    private static Map<String, GpuFormat> vertexAttributeFormats(final RenderPipeline pipeline) {
+        Map<String, GpuFormat> formats = new LinkedHashMap<>();
+        for (VertexFormat binding : pipeline.getVertexFormatBindings()) {
+            if (binding != null) {
+                for (VertexFormatElement element : binding.getElements()) {
+                    formats.putIfAbsent(element.name(), element.format());
+                }
+            }
+        }
+        return formats;
+    }
+
+    private static void registerIntegerInputConversions(
+            final MemoryStack stack,
+            final long compiler,
+            final Map<String, GpuFormat> attributeFormats
+    ) throws ShaderCompileException {
+        if (attributeFormats.isEmpty()) {
+            return;
+        }
+
+        PointerBuffer pResources = stack.mallocPointer(1);
+        checkSpvc(Spvc.spvc_compiler_create_shader_resources(compiler, pResources), "spvc_compiler_create_shader_resources");
+
+        PointerBuffer pList = stack.mallocPointer(1);
+        PointerBuffer pCount = stack.mallocPointer(1);
+        checkSpvc(Spvc.spvc_resources_get_resource_list_for_type(pResources.get(0), Spvc.SPVC_RESOURCE_TYPE_STAGE_INPUT, pList, pCount), "spvc_resources_get_resource_list_for_type(STAGE_INPUT)");
+        int count = (int) pCount.get(0);
+        if (count == 0) {
+            return;
+        }
+
+        SpvcReflectedResource.Buffer list = SpvcReflectedResource.create(pList.get(0), count);
+        for (int i = 0; i < count; i++) {
+            SpvcReflectedResource input = list.get(i);
+            GpuFormat format = attributeFormats.get(input.nameString());
+            if (format == null || !format.name().endsWith("_UINT")) {
+                continue;
+            }
+            int width = format.name().contains("8") ? Spvc.SPVC_MSL_SHADER_VARIABLE_FORMAT_UINT8
+                    : format.name().contains("16") ? Spvc.SPVC_MSL_SHADER_VARIABLE_FORMAT_UINT16
+                    : Spvc.SPVC_MSL_SHADER_VARIABLE_FORMAT_OTHER;
+            if (width == Spvc.SPVC_MSL_SHADER_VARIABLE_FORMAT_OTHER) {
+                continue;
+            }
+
+            long typeHandle = Spvc.spvc_compiler_get_type_handle(compiler, input.type_id());
+            int baseType = Spvc.spvc_type_get_basetype(typeHandle);
+            if (baseType != Spvc.SPVC_BASETYPE_INT8 && baseType != Spvc.SPVC_BASETYPE_INT16
+                    && baseType != Spvc.SPVC_BASETYPE_INT32 && baseType != Spvc.SPVC_BASETYPE_INT64) {
+                continue;
+            }
+
+            SpvcMslShaderInterfaceVar2 var = SpvcMslShaderInterfaceVar2.malloc(stack);
+            Spvc.spvc_msl_shader_interface_var_init_2(var);
+            var.location(Spvc.spvc_compiler_get_decoration(compiler, input.id(), Spv.SpvDecorationLocation));
+            var.vecsize(Spvc.spvc_type_get_vector_size(typeHandle));
+            var.format(width);
+            var.rate(Spvc.SPVC_MSL_SHADER_VARIABLE_RATE_PER_VERTEX);
+            checkSpvc(Spvc.spvc_compiler_msl_add_shader_input_2(compiler, var), "spvc_compiler_msl_add_shader_input_2");
+        }
+    }
+
+    private static MslShader spirvToMsl(final ByteBuffer spirvBytes, final int pushConstantBinding, final Map<String, GpuFormat> attributeFormats) throws ShaderCompileException {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer spirvWords = spirvBytes.asIntBuffer();
 
@@ -257,6 +325,8 @@ final class MetalCrossShaderCompiler {
                         "spvc_compiler_options_set_bool(FLIP_VERTEX_Y)"
                 );
                 checkSpvc(Spvc.spvc_compiler_install_compiler_options(compiler, options), "spvc_compiler_install_compiler_options");
+
+                registerIntegerInputConversions(stack, compiler, attributeFormats);
 
                 PointerBuffer pActiveSet = stack.mallocPointer(1);
                 checkSpvc(Spvc.spvc_compiler_get_active_interface_variables(compiler, pActiveSet), "spvc_compiler_get_active_interface_variables");

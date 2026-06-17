@@ -19,6 +19,7 @@ import java.nio.ByteOrder;
 class MetalGpuBuffer extends GpuBuffer {
     private final MetalDevice device;
     private final boolean cpuAccessible;
+    private final boolean dynamic;
     private final long resourceOptions;
     private final long allocationSize;
     @Nullable
@@ -31,7 +32,8 @@ class MetalGpuBuffer extends GpuBuffer {
         super(usage, size);
         this.device = device;
 
-        this.cpuAccessible = isCpuAccessible(usage);
+        this.dynamic = isDynamic(usage);
+        this.cpuAccessible = isCpuAccessible(usage) || this.dynamic;
         this.resourceOptions = toMtlResourceOptions(usage);
         this.allocationSize = (size + 15L) & ~15L;
         this.nativeHandle = MetalNativeBridge.metallum_create_buffer(device.metalDeviceHandle(), this.allocationSize, this.resourceOptions);
@@ -57,6 +59,7 @@ class MetalGpuBuffer extends GpuBuffer {
         super(usage, size);
         this.device = device;
         this.cpuAccessible = false;
+        this.dynamic = false;
         this.resourceOptions = 0L;
         this.allocationSize = size;
         this.nativeHandle = wrappedHandle;
@@ -74,18 +77,35 @@ class MetalGpuBuffer extends GpuBuffer {
         return duplicate.slice().order(this.storage.order());
     }
 
-    ByteBuffer fullStorageView() {
+    MemorySegment nativeHandle() {
+        if (this.nativeHandle == null) {
+            throw new IllegalStateException("Native Metal buffer is closed");
+        }
+        return this.nativeHandle;
+    }
+
+    boolean isDynamic() {
+        return this.dynamic;
+    }
+
+    long allocationSize() {
+        return this.allocationSize;
+    }
+
+    long resourceOptions() {
+        return this.resourceOptions;
+    }
+
+    ByteBuffer currentStorage() {
         if (this.storage == null) {
             throw new IllegalStateException("Buffer is not CPU-accessible");
         }
         return this.storage.duplicate().order(this.storage.order());
     }
 
-    MemorySegment nativeHandle() {
-        if (this.nativeHandle == null) {
-            throw new IllegalStateException("Native Metal buffer is closed");
-        }
-        return this.nativeHandle;
+    void swapBacking(final MemorySegment handle, final ByteBuffer storage) {
+        this.nativeHandle = handle;
+        this.storage = storage;
     }
 
     @Override
@@ -136,8 +156,12 @@ class MetalGpuBuffer extends GpuBuffer {
                 || (usage & GpuBuffer.USAGE_HINT_CLIENT_STORAGE) != 0;
     }
 
+    private static boolean isDynamic(@GpuBuffer.Usage final int usage) {
+        return (usage & GpuBuffer.USAGE_UNIFORM) != 0 && (usage & GpuBuffer.USAGE_COPY_DST) != 0;
+    }
+
     private static long toMtlResourceOptions(@GpuBuffer.Usage final int usage) {
-        MTLStorageMode storageMode = isCpuAccessible(usage) ? MTLStorageMode.Shared : MTLStorageMode.Private;
+        MTLStorageMode storageMode = isCpuAccessible(usage) || isDynamic(usage) ? MTLStorageMode.Shared : MTLStorageMode.Private;
         return MTLResourceOptions.of(storageMode, MTLHazardTrackingMode.Untracked);
     }
 }

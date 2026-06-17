@@ -91,6 +91,14 @@ public enum MTLVertexFormat {
             case RGB32_SINT -> Int3;
             case RGBA32_SINT -> Int4;
             case R16_FLOAT -> Half;
+            case R16_UINT -> UShort;
+            case R16_SINT -> Short;
+            case R16_UNORM -> UShortNormalized;
+            case R16_SNORM -> ShortNormalized;
+            case R8_UINT -> UChar;
+            case R8_SINT -> Char;
+            case R8_UNORM -> UCharNormalized;
+            case R8_SNORM -> CharNormalized;
             case RG16_FLOAT -> Half2;
             case RGBA16_FLOAT -> Half4;
             case RGBA8_SNORM -> Char4Normalized;
