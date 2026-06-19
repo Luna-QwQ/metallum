@@ -8,6 +8,7 @@ import com.mojang.blaze3d.buffers.GpuFence;
 import com.mojang.blaze3d.systems.*;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.joml.Vector4f;
@@ -43,8 +44,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     private MTLCommandEncoder currentEncoder;
     private MemorySegment renderColorAttachment = MemorySegment.NULL;
     private MemorySegment renderDepthAttachment = MemorySegment.NULL;
-    private final EncoderBindingCache bindingCache = new EncoderBindingCache();
-    private final Map<Long, java.util.ArrayDeque<MemorySegment>> dynamicBackingPool = new java.util.HashMap<>();
+    private final Long2ObjectOpenHashMap<java.util.ArrayDeque<MemorySegment>> dynamicBackingPool = new Long2ObjectOpenHashMap<>();
 
     MetalCommandEncoder(final MetalDevice device) {
         this.device = device;
@@ -90,11 +90,6 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         }
         renderColorAttachment = MemorySegment.NULL;
         renderDepthAttachment = MemorySegment.NULL;
-        bindingCache.reset();
-    }
-
-    EncoderBindingCache bindingCache() {
-        return bindingCache;
     }
 
     @Override
@@ -244,6 +239,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
     @Override
     public void submitRenderPass() {
         if (currentRenderPass != null) {
+            currentRenderPass.materializePendingClear();
             currentRenderPass.popDebugGroup();
             currentRenderPass = null;
         }
@@ -408,7 +404,7 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         int pixelSize = metalDst.pixelSize();
         int rowBytes = width * pixelSize;
         int bytesPerImage = rowBytes * height;
-        GpuBufferSlice slice = transientMemory.uploadStaging(source.limit(bytesPerImage), pixelSize, GpuBuffer.USAGE_COPY_SRC);
+        GpuBufferSlice slice = transientMemory.uploadStaging(source.duplicate().limit(bytesPerImage), pixelSize, GpuBuffer.USAGE_COPY_SRC);
 
         MTLBlitCommandEncoder blit = blitCommandEncoder();
         blit.copyFromBufferToTexture(

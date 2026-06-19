@@ -26,9 +26,12 @@ import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 @Environment(EnvType.CLIENT)
 final class MetalDevice implements GpuDeviceBackend {
+    private static final Pattern BLOCK_COMMENTS = Pattern.compile("(?s)/\\*.*?\\*/");
+    private static final Pattern LINE_COMMENTS = Pattern.compile("(?m)//[^\\n]*");
     private final MemorySegment metalDeviceHandle;
     private final MemorySegment metalLayer;
     private final MemorySegment cocoaView;
@@ -39,7 +42,7 @@ final class MetalDevice implements GpuDeviceBackend {
     private final Map<RenderPipeline, MetalCompiledRenderPipeline> compiledPipelines = new IdentityHashMap<>();
     private final Map<ShaderCompilationKey, IntermediaryShaderModule> shaderCache = new HashMap<>();
     private final Map<MslFunctionKey, MemorySegment> functionCache = new HashMap<>();
-    private volatile ShaderSource activeShaderSource;
+    private ShaderSource activeShaderSource;
 
     MetalDevice(
             final ShaderSource defaultShaderSource,
@@ -230,7 +233,8 @@ final class MetalDevice implements GpuDeviceBackend {
     }
 
     private static String prepareShaderSource(final String source, final ShaderDefines defines) {
-        String stripped = source.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("(?m)//[^\\n]*", "").stripLeading();
+        String stripped = BLOCK_COMMENTS.matcher(source).replaceAll("");
+        stripped = LINE_COMMENTS.matcher(stripped).replaceAll("").stripLeading();
         return GlslPreprocessor.injectDefines(stripped, defines);
     }
 

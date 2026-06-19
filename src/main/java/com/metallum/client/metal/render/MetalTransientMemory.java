@@ -144,7 +144,7 @@ final class MetalTransientMemory implements TransientMemory {
         ReferenceArrayList<GpuBufferSlice> uploaded = new ReferenceArrayList<>();
         uploaded.size(data.size());
         IntArrayList sortedIndices = IntArrayList.toList(IntStream.range(0, data.size()));
-        sortedIndices.sort(IntComparator.comparing(index -> data.get(index).remaining()));
+        sortedIndices.sort(IntComparator.comparingInt(index -> data.get(index).remaining()));
 
         while (!sortedIndices.isEmpty()) {
             boolean allocatedAnything = false;

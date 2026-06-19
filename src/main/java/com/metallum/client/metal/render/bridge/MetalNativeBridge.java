@@ -128,16 +128,16 @@ public final class MetalNativeBridge {
                             DOUBLE
                     )
             );
-            MTLRenderCommandEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+            MTLRenderCommandEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG));
             MTLRenderCommandEncoderDrawIndexedPrimitives = downcall(
                     lookup,
                     "metallum_MTLRenderCommandEncoder_drawIndexedPrimitives",
-                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG)
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG)
             );
             MTLRenderCommandEncoderMultiDrawIndexed = downcall(
                     lookup,
                     "metallum_MTLRenderCommandEncoder_multiDrawIndexed",
-                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG)
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG)
             );
             MTLRenderCommandEncoderDrawIndexedPrimitivesIndirect = downcall(
                     lookup,
@@ -152,7 +152,7 @@ public final class MetalNativeBridge {
             MTLRenderCommandEncoderDrawIndexedPrimitivesTriangleFan = downcallWithoutCritical(
                     lookup,
                     "metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan",
-                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG)
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG)
             );
             MTLCommandBufferClearColorDepthTexturesRegion = downcall(
                     lookup,
@@ -886,10 +886,11 @@ public final class MetalNativeBridge {
             final long primitiveType,
             final long firstVertex,
             final long vertexCount,
-            final long instanceCount
+            final long instanceCount,
+            final long baseInstance
     ) {
         try {
-            MTLRenderCommandEncoderDrawPrimitives.invokeExact(segment(encoder), primitiveType, firstVertex, vertexCount, instanceCount);
+            MTLRenderCommandEncoderDrawPrimitives.invokeExact(segment(encoder), primitiveType, firstVertex, vertexCount, instanceCount, baseInstance);
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawPrimitives", throwable);
         }
@@ -903,7 +904,8 @@ public final class MetalNativeBridge {
             final MemorySegment indexBuffer,
             final long indexBufferOffset,
             final long instanceCount,
-            final long baseVertex
+            final long baseVertex,
+            final long baseInstance
     ) {
         try {
             MTLRenderCommandEncoderDrawIndexedPrimitives.invokeExact(
@@ -914,7 +916,8 @@ public final class MetalNativeBridge {
                     segment(indexBuffer),
                     indexBufferOffset,
                     instanceCount,
-                    baseVertex
+                    baseVertex,
+                    baseInstance
             );
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawIndexedPrimitives", throwable);
@@ -930,7 +933,8 @@ public final class MetalNativeBridge {
             final MemorySegment indexCounts,
             final MemorySegment vertexOffsets,
             final long drawCount,
-            final long instanceCount
+            final long instanceCount,
+            final long baseInstance
     ) {
         try {
             MTLRenderCommandEncoderMultiDrawIndexed.invokeExact(
@@ -942,7 +946,8 @@ public final class MetalNativeBridge {
                     segment(indexCounts),
                     segment(vertexOffsets),
                     drawCount,
-                    instanceCount
+                    instanceCount,
+                    baseInstance
             );
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLRenderCommandEncoder_multiDrawIndexed", throwable);
@@ -1006,7 +1011,8 @@ public final class MetalNativeBridge {
             final long indexBufferOffset,
             final long indexCount,
             final long baseVertex,
-            final long instanceCount
+            final long instanceCount,
+            final long baseInstance
     ) {
         try {
             MTLRenderCommandEncoderDrawIndexedPrimitivesTriangleFan.invokeExact(
@@ -1018,7 +1024,8 @@ public final class MetalNativeBridge {
                     indexBufferOffset,
                     indexCount,
                     baseVertex,
-                    instanceCount
+                    instanceCount,
+                    baseInstance
             );
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan", throwable);

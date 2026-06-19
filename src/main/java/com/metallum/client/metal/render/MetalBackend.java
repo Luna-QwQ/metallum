@@ -42,37 +42,34 @@ public class MetalBackend implements GpuBackend {
         MemorySegment cocoaView;
         MemorySegment metalLayer;
         String deviceName;
-        try {
-            deviceHandle = MetalNativeBridge.metallum_create_system_default_device();
-            if (MetalNativeBridge.isNullHandle(deviceHandle)) {
-                throw new IllegalStateException("MTLCreateSystemDefaultDevice returned null");
-            }
-
-            deviceName = MetalNativeBridge.metallum_copy_device_name(deviceHandle);
-            if (deviceName.isBlank()) deviceName = "<unknown Metal device>";
-
-            cocoaWindow = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaWindow(window));
-            if (MetalNativeBridge.isNullHandle(cocoaWindow)) {
-                throw new IllegalStateException("glfwGetCocoaWindow returned null");
-            }
-
-            cocoaView = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaView(window));
-            if (MetalNativeBridge.isNullHandle(cocoaView)) {
-                throw new IllegalStateException("glfwGetCocoaView returned null");
-            }
-
-            double scale = MetalNativeBridge.metallum_NSWindow_backingScaleFactor(cocoaWindow);
-            if (scale <= 0.0) scale = 1.0;
-
-            metalLayer = MetalNativeBridge.metallum_create_metal_layer(deviceHandle, scale);
-            if (MetalNativeBridge.isNullHandle(metalLayer)) {
-                throw new IllegalStateException("Failed to create CAMetalLayer");
-            }
-
-            MetalNativeBridge.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
-        } catch (Throwable throwable) {
-            throw new BackendCreationException("Metal bootstrap failed: " + throwable.getMessage(), BackendCreationException.Reason.OTHER);
+        deviceHandle = MetalNativeBridge.metallum_create_system_default_device();
+        if (MetalNativeBridge.isNullHandle(deviceHandle)) {
+            throw new BackendCreationException("MTLCreateSystemDefaultDevice returned null", BackendCreationException.Reason.OTHER);
         }
+
+        deviceName = MetalNativeBridge.metallum_copy_device_name(deviceHandle);
+        if (deviceName.isBlank()) deviceName = "<unknown Metal device>";
+
+        cocoaWindow = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaWindow(window));
+        if (MetalNativeBridge.isNullHandle(cocoaWindow)) {
+            throw new BackendCreationException("glfwGetCocoaWindow returned null", BackendCreationException.Reason.GLFW_ERROR);
+        }
+
+        cocoaView = MemorySegment.ofAddress(GLFWNativeCocoa.glfwGetCocoaView(window));
+        if (MetalNativeBridge.isNullHandle(cocoaView)) {
+            throw new BackendCreationException("glfwGetCocoaView returned null", BackendCreationException.Reason.GLFW_ERROR);
+        }
+
+        double scale = MetalNativeBridge.metallum_NSWindow_backingScaleFactor(cocoaWindow);
+        if (scale <= 0.0) scale = 1.0;
+
+
+        metalLayer = MetalNativeBridge.metallum_create_metal_layer(deviceHandle, scale);
+        if (MetalNativeBridge.isNullHandle(metalLayer)) {
+            throw new BackendCreationException("Failed to create CAMetalLayer", BackendCreationException.Reason.OTHER);
+        }
+
+        MetalNativeBridge.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
 
         Metallum.LOGGER.info("Metal device: {}", deviceName);
 

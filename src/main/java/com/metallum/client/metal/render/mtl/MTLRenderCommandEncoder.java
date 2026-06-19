@@ -86,12 +86,12 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
         );
     }
 
-    public void drawPrimitives(final MTLPrimitiveType primitiveType, final int firstVertex, final int vertexCount, final int instanceCount) {
-        MetalNativeBridge.MTLRenderCommandEncoder_drawPrimitives(handle(), primitiveType.value, firstVertex, vertexCount, instanceCount);
+    public void drawPrimitives(final MTLPrimitiveType primitiveType, final int firstVertex, final int vertexCount, final int instanceCount, final int baseInstance) {
+        MetalNativeBridge.MTLRenderCommandEncoder_drawPrimitives(handle(), primitiveType.value, firstVertex, vertexCount, instanceCount, baseInstance);
     }
 
-    public void drawIndexedPrimitives(final MTLPrimitiveType primitiveType, final int indexCount, final MTLIndexType indexType, final MemorySegment indexBuffer, final long offset, final int instanceCount, final int baseVertex) {
-        MetalNativeBridge.MTLRenderCommandEncoder_drawIndexedPrimitives(handle(), primitiveType.value, indexCount, indexType.value, indexBuffer, offset, instanceCount, baseVertex);
+    public void drawIndexedPrimitives(final MTLPrimitiveType primitiveType, final int indexCount, final MTLIndexType indexType, final MemorySegment indexBuffer, final long offset, final int instanceCount, final int baseVertex, final int baseInstance) {
+        MetalNativeBridge.MTLRenderCommandEncoder_drawIndexedPrimitives(handle(), primitiveType.value, indexCount, indexType.value, indexBuffer, offset, instanceCount, baseVertex, baseInstance);
     }
 
     public void drawIndexedPrimitivesIndirect(final MTLPrimitiveType primitiveType, final MTLIndexType indexType, final MemorySegment indexBuffer, final MemorySegment indirectBuffer, final long indirectBufferOffset, final int drawCount, final long stride) {
@@ -102,8 +102,8 @@ public final class MTLRenderCommandEncoder extends MTLCommandEncoder {
         MetalNativeBridge.MTLRenderCommandEncoder_drawPrimitivesIndirect(handle(), primitiveType.value, indirectBuffer, indirectBufferOffset, drawCount, stride);
     }
 
-    public void drawIndexedPrimitivesTriangleFan(final MemorySegment indexBuffer, final MemorySegment fanIndexBuffer, final long fanIndexBufferOffset, final long indexType, final long offset, final int indexCount, final int baseVertex, final int instanceCount) {
-        MetalNativeBridge.MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(handle(), indexBuffer, fanIndexBuffer, fanIndexBufferOffset, indexType, offset, indexCount, baseVertex, instanceCount);
+    public void drawIndexedPrimitivesTriangleFan(final MemorySegment indexBuffer, final MemorySegment fanIndexBuffer, final long fanIndexBufferOffset, final long indexType, final long offset, final int indexCount, final int baseVertex, final int instanceCount, final int baseInstance) {
+        MetalNativeBridge.MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(handle(), indexBuffer, fanIndexBuffer, fanIndexBufferOffset, indexType, offset, indexCount, baseVertex, instanceCount, baseInstance);
     }
 
     public void updateFence(final MemorySegment fence, final MTLRenderStages stages) {

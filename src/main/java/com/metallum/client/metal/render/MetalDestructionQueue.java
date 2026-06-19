@@ -1,5 +1,6 @@
 package com.metallum.client.metal.render;
 
+import com.metallum.Metallum;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
@@ -31,7 +32,11 @@ final class MetalDestructionQueue {
         List<Runnable> toDestroy = this.queues[this.currentQueueIndex];
         this.queues[this.currentQueueIndex] = new ArrayList<>();
         for (Runnable destroyAction : toDestroy) {
-            destroyAction.run();
+            try {
+                destroyAction.run();
+            } catch (Exception e) {
+                Metallum.LOGGER.error("[metallum] Destroy action threw an exception; resource may have leaked", e);
+            }
         }
     }
 

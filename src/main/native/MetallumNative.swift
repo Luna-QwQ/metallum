@@ -533,11 +533,6 @@ public func metallum_MTLCommandEncoder_endEncoding(_ encoder: MTLCommandEncoder)
     encoder.endEncoding()
 }
 
-@_cdecl("metallum_MTLBlitCommandEncoder_endEncoding")
-public func metallum_MTLBlitCommandEncoder_endEncoding(_ encoder: MTLBlitCommandEncoder) {
-    encoder.endEncoding()
-}
-
 @_cdecl("metallum_MTLBlitCommandEncoder_copyFromBufferToBuffer")
 public func metallum_MTLBlitCommandEncoder_copyFromBufferToBuffer(
     _ blit: MTLBlitCommandEncoder,
@@ -667,7 +662,7 @@ public func metallum_create_texture_2d(
         if cubeCompatible != 0 {
             if depthOrLayers > 6 {
                 descriptor.textureType = MTLTextureType.typeCubeArray
-                descriptor.arrayLength = Int(depthOrLayers)
+                descriptor.arrayLength = Int(depthOrLayers) / 6
             } else {
                 descriptor.textureType = MTLTextureType.typeCube
                 descriptor.arrayLength = 1
@@ -946,13 +941,15 @@ public func metallum_MTLRenderCommandEncoder_drawPrimitives(
     _ primitiveType: MTLPrimitiveType,
     _ firstVertex: Int,
     _ vertexCount: Int,
-    _ instanceCount: Int
+    _ instanceCount: Int,
+    _ baseInstance: Int
 ) {
     encoder.drawPrimitives(
         type: primitiveType,
         vertexStart: firstVertex,
         vertexCount: vertexCount,
-        instanceCount: instanceCount
+        instanceCount: instanceCount,
+        baseInstance: baseInstance
     )
 }
 
@@ -965,7 +962,8 @@ public func metallum_MTLRenderCommandEncoder_drawIndexedPrimitives(
     _ indexBuffer: MTLBuffer,
     _ indexBufferOffset: Int,
     _ instanceCount: Int,
-    _ baseVertex: Int
+    _ baseVertex: Int,
+    _ baseInstance: Int
 ) {
     encoder.drawIndexedPrimitives(
         type: primitiveType,
@@ -975,7 +973,7 @@ public func metallum_MTLRenderCommandEncoder_drawIndexedPrimitives(
         indexBufferOffset: indexBufferOffset,
         instanceCount: instanceCount,
         baseVertex: baseVertex,
-        baseInstance: 0
+        baseInstance: baseInstance
     )
 }
 
@@ -989,7 +987,8 @@ public func metallum_MTLRenderCommandEncoder_multiDrawIndexed(
     _ indexCounts: UnsafePointer<Int32>,
     _ vertexOffsets: UnsafePointer<Int32>,
     _ drawCount: Int,
-    _ instanceCount: Int
+    _ instanceCount: Int,
+    _ baseInstance: Int
 ) {
     for i in 0..<drawCount {
         let indexCount = Int(indexCounts[i])
@@ -1002,7 +1001,7 @@ public func metallum_MTLRenderCommandEncoder_multiDrawIndexed(
                 indexBufferOffset: firstIndexOffsets[i],
                 instanceCount: instanceCount,
                 baseVertex: Int(vertexOffsets[i]),
-                baseInstance: 0
+                baseInstance: baseInstance
             )
         }
     }
@@ -1063,7 +1062,8 @@ public func metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(
     _ indexOffsetBytes: Int,
     _ indexCount: Int,
     _ baseVertex: Int,
-    _ instanceCount: Int
+    _ instanceCount: Int,
+    _ baseInstance: Int
 ) {
     guard let generatedIndexCount = writeIndexedTriangleFanIndices(
         sourceIndexBuffer: indexBuffer,
@@ -1083,7 +1083,7 @@ public func metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesTriangleFan(
         indexBufferOffset: fanIndexBufferOffset,
         instanceCount: instanceCount,
         baseVertex: baseVertex,
-        baseInstance: 0
+        baseInstance: baseInstance
     )
 }
 
