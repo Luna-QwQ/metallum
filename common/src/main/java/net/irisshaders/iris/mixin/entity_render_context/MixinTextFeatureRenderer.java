@@ -1,6 +1,7 @@
 package net.irisshaders.iris.mixin.entity_render_context;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.layer.GbufferPrograms;
 import net.irisshaders.iris.mixinterface.ModelStorage;
 import net.irisshaders.iris.uniforms.CapturedRenderingState;
@@ -27,7 +28,7 @@ public class MixinTextFeatureRenderer {
 		((ModelStorage) (Object) modelSubmit).iris$set();
 		if (((ModelStorage) (Object) modelSubmit).iris$wasBE()) {
 			hasBE = true;
-			ImmediateState.isRenderingBEs = true;
+			ImmediateState.isRenderingBEs = Iris.isPackInUseQuick();
 		} else if (hasBE) {
 			hasBE = false;
 			ImmediateState.isRenderingBEs = false;

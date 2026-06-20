@@ -321,6 +321,8 @@ public class CompositeRenderer {
 			int beginWidth = (int) (compositePass.viewWidth * compositePass.viewportScale.viewportX());
 			int beginHeight = (int) (compositePass.viewHeight * compositePass.viewportScale.viewportY());
 			GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
+			GlStateManager._scissorBox(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
+			GlStateManager._disableScissorTest();
 
 			compositePass.program.use();
 

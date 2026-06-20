@@ -240,6 +240,8 @@ public class ShadowCompositeRenderer {
 				int beginWidth = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportX());
 				int beginHeight = (int) (renderTargets.getResolution() * renderPass.viewportScale.viewportY());
 				GlStateManager._viewport(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
+				GlStateManager._scissorBox(beginWidth, beginHeight, (int) scaledWidth, (int) scaledHeight);
+				GlStateManager._disableScissorTest();
 
 				renderPass.framebuffer.bind();
 				renderPass.program.use();
