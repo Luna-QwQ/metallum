@@ -512,6 +512,7 @@ public class CompositeRenderer {
 
 		@Override
 		public void setupState() {
+			GlStateManager._colorMask(0xFFFFFFFF);
 			framebuffer.bind();
 			if (blendModeOverride != null) {
 				blendModeOverride.apply();

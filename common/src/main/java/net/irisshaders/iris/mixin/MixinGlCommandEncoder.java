@@ -9,6 +9,7 @@ import com.mojang.blaze3d.opengl.GlProgram;
 import com.mojang.blaze3d.opengl.GlRenderPass;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.ScissorState;
@@ -196,6 +197,15 @@ public class MixinGlCommandEncoder {
 			}
 			is.iris$setupState(glRenderPass.samplers, sam == null ? null : sam.view());
 			programsToClear.add(is);
+		}
+	}
+
+	@Redirect(method = "applyPipelineState", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/opengl/GlStateManager;_colorMask(II)V"))
+	private void iris$changeColorMask(int index, int writeMask, @Local ColorTargetState[] states) {
+		if (states.length == 1) {
+			GlStateManager._colorMask(writeMask);
+		} else {
+			GlStateManager._colorMask(index, writeMask);
 		}
 	}
 

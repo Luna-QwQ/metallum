@@ -3,9 +3,11 @@ package net.irisshaders.iris.gl.blending;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.mixin.GlStateManagerAccessor;
 
+import java.util.Arrays;
+
 public class DepthColorStorage {
 	private static boolean originalDepthEnable;
-	private static int originalColor;
+	private static final int[] originalColor = new int[GlStateManagerAccessor.getCOLOR_MASK().length];
 	private static boolean depthColorLocked;
 
 	public static boolean isDepthColorLocked() {
@@ -15,11 +17,12 @@ public class DepthColorStorage {
 	public static void disableDepthColor() {
 		if (!depthColorLocked) {
 			// Only save the previous state if the depth and color mask wasn't already locked
-			int colorMask = GlStateManagerAccessor.getCOLOR_MASK()[0];
 			GlStateManager.DepthState depthState = GlStateManagerAccessor.getDEPTH();
 
 			originalDepthEnable = depthState.mask;
-			originalColor = colorMask;
+			for (int i = 0; i < originalColor.length; i++) {
+				originalColor[i] = GlStateManagerAccessor.getCOLOR_MASK()[i];
+			}
 		}
 
 		depthColorLocked = false;
@@ -35,7 +38,11 @@ public class DepthColorStorage {
 	}
 
 	public static void deferColorMask(int writeMask) {
-		originalColor = writeMask;
+		Arrays.fill(originalColor, writeMask);
+	}
+
+	public static void deferColorMask(int index, int writeMask) {
+		originalColor[index] = writeMask;
 	}
 
 	public static void unlockDepthColor() {
@@ -47,6 +54,8 @@ public class DepthColorStorage {
 
 		GlStateManager._depthMask(originalDepthEnable);
 
-		GlStateManager._colorMask(originalColor);
+		for (int i = 0; i < originalColor.length; i++) {
+			GlStateManager._colorMask(i, originalColor[i]);
+		}
 	}
 }
