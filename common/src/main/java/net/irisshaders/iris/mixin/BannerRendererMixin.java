@@ -25,7 +25,7 @@ public abstract class BannerRendererMixin {
     @Inject(method = "submitPatterns", at = @At("HEAD"), cancellable = true)
     private static <S> void fism$cancelSubmitPatterns(final SpriteGetter sprites, final PoseStack poseStack, final SubmitNodeCollector submitNodeCollector, final int lightCoords, final int overlayCoords, final Model<S> model, final S state, final boolean banner, final DyeColor baseColor, final BannerPatternLayers patterns, final ModelFeatureRenderer.@Nullable CrumblingOverlay breakProgress, CallbackInfo ci) {
         if(IrisApiV0Impl.INSTANCE.isRenderingShadowPass()) {
-            BannerRendererAccessor.fism$submitPatternLayerInvoke(sprites, poseStack, submitNodeCollector, lightCoords, overlayCoords, model, state, banner ? Sheets.BANNER_PATTERN_BASE : Sheets.SHIELD_PATTERN_BASE, baseColor, breakProgress);
+            BannerRendererAccessor.iris$invokeSubmitPatternLayer(sprites, poseStack, submitNodeCollector, lightCoords, overlayCoords, model, state, banner ? Sheets.BANNER_PATTERN_BASE : Sheets.SHIELD_PATTERN_BASE, baseColor, breakProgress);
             ci.cancel();
         }
     }
