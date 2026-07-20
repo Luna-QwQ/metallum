@@ -66,22 +66,26 @@ tasks.register("buildIOSNative", Exec) {
 		if (!org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
 			return false
 		}
-		// `xcrun --sdk iphoneos --show-sdk-path` can exit 0 while only emitting
-		// a "no such SDK: iphoneos" warning on stderr (or even stdout), which
-		// would let the task run and then fail inside swiftc. Verify the
-		// reported path actually exists on disk and looks like an iOS SDK
-		// before attempting to compile. Use consumeProcessOutput to avoid
-		// deadlocking on a full stderr pipe.
+		// `xcrun --sdk iphoneos --show-sdk-path` is unreliable on hosts that
+		// only have the Command Line Tools (or an Xcode without the iOS
+		// platform): it may exit 0 and print a fallback path, or print a
+		// warning to stderr in a format that does not literally contain
+		// "no such SDK". Either way swiftc would then fail with
+		// "unable to load standard library for target 'arm64-apple-ios14.0'".
+		//
+		// Require ALL of: zero exit, no stderr output at all, a non-empty
+		// stdout path that contains "iPhoneOS" (the canonical platform name),
+		// and that path being an existing directory.
 		def out = new StringBuilder()
 		def err = new StringBuilder()
 		def proc = ["xcrun", "--sdk", "iphoneos", "--show-sdk-path"].execute()
-		proc.consumeProcessOutput(out, err)
-		proc.waitFor()
+		proc.waitForProcessOutput(out, err)
 		def path = out.toString().trim()
+		def errStr = err.toString().trim()
 		return proc.exitValue() == 0
+			&& errStr.empty
 			&& !path.empty
-			&& !err.toString().toLowerCase().contains("no such sdk")
-			&& !path.toLowerCase().contains("no such sdk")
+			&& path.contains("iPhoneOS")
 			&& new File(path).isDirectory()
 	}
 
