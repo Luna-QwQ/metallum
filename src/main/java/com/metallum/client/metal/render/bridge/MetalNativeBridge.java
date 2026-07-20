@@ -16,25 +16,38 @@ import java.nio.file.StandardCopyOption;
 
 @Environment(EnvType.CLIENT)
 public final class MetalNativeBridge {
-    private static final String RESOURCE_PATH = "/natives/macos/libmetallum.dylib";
+    private static final String MACOS_RESOURCE_PATH = "/natives/macos/libmetallum.dylib";
+    private static final String IOS_RESOURCE_PATH = "/natives/ios/libmetallum.dylib";
     private static final ValueLayout.OfInt INT = ValueLayout.JAVA_INT;
     private static final ValueLayout.OfLong LONG = ValueLayout.JAVA_LONG;
     private static final ValueLayout.OfFloat FLOAT = ValueLayout.JAVA_FLOAT;
     private static final ValueLayout.OfDouble DOUBLE = ValueLayout.JAVA_DOUBLE;
     private static final Linker LINKER = Linker.nativeLinker();
 
+    /**
+     * iOS (e.g. via PojavLauncher) forbids dlopen of unsigned dylibs from the app's
+     * tmp/writable directories due to code-signing restrictions. The native bridge
+     * must therefore be loaded as a signed, embedded framework or be statically
+     * linked into the launcher binary. We detect that environment and avoid the
+     * temp-file extraction path used on macOS.
+     */
+    static boolean isIOS() {
+        String osName = System.getProperty("os.name", "");
+        String osArch = System.getProperty("os.arch", "");
+        if (osName.toLowerCase().contains("ios")) {
+            return true;
+        }
+        // PojavLauncher on iOS reports as "iOS" or "Darwin" with aarch64
+        return System.getProperty("pojav.launcher") != null
+                || System.getProperty("org.pojavlauncher") != null
+                || (osName.toLowerCase().contains("darwin")
+                    && osArch.toLowerCase().contains("aarch64")
+                    && System.getProperty("metal.platform", "").toLowerCase().contains("ios"));
+    }
+
     static {
         try {
-            Path tempLib = Files.createTempFile("metallum-native-", ".dylib");
-            tempLib.toFile().deleteOnExit();
-            try (InputStream stream = MetalNativeBridge.class.getResourceAsStream(RESOURCE_PATH)) {
-                if (stream == null) {
-                    throw new IllegalStateException("Missing native library resource: " + RESOURCE_PATH);
-                }
-                Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            SymbolLookup lookup = SymbolLookup.libraryLookup(tempLib, Arena.global());
+            SymbolLookup lookup = createSymbolLookup();
 
 
             createSystemDefaultDevice = downcall(lookup, "metallum_create_system_default_device", FunctionDescriptor.of(ValueLayout.ADDRESS));
@@ -252,10 +265,68 @@ public final class MetalNativeBridge {
             MTLRenderCommandEncoderUpdateFence = downcall(lookup, "MTLRenderCommandEncoder_updateFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
             MTLRenderCommandEncoderWaitForFence = downcallWithoutCritical(lookup, "MTLRenderCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
             MTLBlitCommandEncoderUpdateFence = downcall(lookup, "MTLBlitCommandEncoder_updateFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-            MTLBlitCommandEncoderWaitForFence = downcallWithoutCritical(lookup, "MTLBlitCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            MTLBlitCommandEncoderWaitForFence = downcallWithoutCritical(lookup, "metallum_MTLBlitCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load Metal native bridge", e);
         }
+    }
+
+    /**
+     * Resolves the {@link SymbolLookup} for the Metallum native bridge.
+     *
+     * <p>On macOS the dylib is bundled inside the mod jar and extracted to a
+     * temporary file at runtime. On iOS, dynamic loading from a writable tmp
+     * directory is rejected by the kernel because the dylib is not part of the
+     * app bundle's code signature. We therefore:
+     * <ol>
+     *   <li>try to load the dylib from the bundled Frameworks directory via
+     *       {@code System.loadLibrary} (PojavLauncher exposes embedded, signed
+     *       dylibs this way); if that succeeds, the symbols are looked up via
+     *       {@link SymbolLookup#loaderLookup()};</li>
+     *   <li>fall back to {@link SymbolLookup#loaderLookup()} alone, which finds
+     *       symbols that are statically linked into the launcher executable;</li>
+     *   <li>as a last resort, attempt the macOS-style temp-file extraction
+     *       path so that an embedded signed dylib shipped in the jar still
+     *       works on developer devices with relaxed signing.</li>
+     * </ol>
+     */
+    private static SymbolLookup createSymbolLookup() throws IOException {
+        if (isIOS()) {
+            // Try loading the embedded, signed dylib from the app bundle's
+            // Frameworks directory first (PojavLauncher supports this).
+            try {
+                System.loadLibrary("metallum");
+            } catch (UnsatisfiedLinkError ignoredFirst) {
+                // The launcher may ship the binary under a different soname.
+                try {
+                    System.loadLibrary("metallum_native");
+                } catch (UnsatisfiedLinkError ignoredSecond) {
+                    // Fall through to loaderLookup; the symbols may already be
+                    // present in the launcher's main executable.
+                }
+            }
+            SymbolLookup loader = SymbolLookup.loaderLookup();
+            // Sanity check: if no metallum symbols are visible, we cannot proceed.
+            if (loader.find("metallum_create_system_default_device").isPresent()) {
+                return loader;
+            }
+            // Last resort: extract from the jar (only works on developer devices
+            // where the dylib has been ad-hoc signed and embedded).
+            return extractFromResource(IOS_RESOURCE_PATH);
+        }
+        return extractFromResource(MACOS_RESOURCE_PATH);
+    }
+
+    private static SymbolLookup extractFromResource(String resourcePath) throws IOException {
+        Path tempLib = Files.createTempFile("metallum-native-", ".dylib");
+        tempLib.toFile().deleteOnExit();
+        try (InputStream stream = MetalNativeBridge.class.getResourceAsStream(resourcePath)) {
+            if (stream == null) {
+                throw new IllegalStateException("Missing native library resource: " + resourcePath);
+            }
+            Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return SymbolLookup.libraryLookup(tempLib, Arena.global());
     }
 
 

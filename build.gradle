@@ -52,8 +52,52 @@ tasks.register("buildMacNative", Exec) {
 		"src/main/native/MetallumNative.swift"
 }
 
+// Builds the Metallum native bridge as a dylib targeting iOS arm64. The
+// resulting artifact must be embedded in the iOS app bundle's Frameworks
+// directory and signed with the app's signing identity; iOS forbids loading
+// unsigned dylibs from writable tmp directories at runtime, so the produced
+// file is consumed by PojavLauncher's packaging step rather than extracted
+// from the jar at runtime.
+//
+// Requires Xcode with an iOS toolchain. Skipped automatically if the host
+// is not macOS or if the iOS SDK is unavailable.
+tasks.register("buildIOSNative", Exec) {
+	onlyIf {
+		org.gradle.internal.os.OperatingSystem.current().isMacOsX() &&
+			[
+				"xcrun", "--sdk", "iphoneos", "--show-sdk-path"
+			].execute().waitFor() == 0
+	}
+
+	workingDir project.projectDir
+	doFirst {
+		file("src/main/resources/natives/ios").mkdirs()
+	}
+
+	// Note: -target arm64-apple-ios14.0 requires the iOS SDK to be installed.
+	// The dylib is built with `-static`-style linking of the Swift stdlib so it
+	// can be loaded directly via dlopen on a jailbroken/signable device.
+	commandLine "swiftc",
+		"-O",
+		"-whole-module-optimization",
+		"-emit-library",
+		"-module-name", "metallum_native",
+		"-target", "arm64-apple-ios14.0",
+		"-sdk", "iphoneos",
+		"-framework", "Foundation",
+		"-framework", "Metal",
+		"-framework", "QuartzCore",
+		"-framework", "UIKit",
+		"-o", "src/main/resources/natives/ios/libmetallum.dylib",
+		"src/main/native/MetallumNative.swift"
+}
+
 tasks.named("processResources") {
 	dependsOn(tasks.named("buildMacNative"))
+	// The iOS native is only built on a macOS host with the iOS SDK installed.
+	// It is optional: if the toolchain is missing the task is skipped and the
+	// iOS dylib is simply not packaged in the jar.
+	dependsOn(tasks.named("buildIOSNative"))
 }
 
 tasks.withType(JavaCompile).configureEach {

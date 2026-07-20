@@ -255,7 +255,8 @@ final class MetalDevice implements GpuDeviceBackend {
         DeviceType type = DeviceType.INTEGRATED;
         Set<String> underlyingExtensions = Set.of("CAMetalLayer", "MTLDevice");
         String osVersion = System.getProperty("os.version", "").trim();
-        String driverDescription = "macOS " + osVersion;
+        String platformName = MetalNativeBridge.isIOS() ? "iOS" : "macOS";
+        String driverDescription = platformName + " " + osVersion;
         long maxMemoryAllocationSize = MetalNativeBridge.MTLDevice_maxMemoryAllocationSize(metalDeviceHandle);
         return new DeviceInfo(
                 deviceName,

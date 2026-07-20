@@ -1,8 +1,23 @@
 import Foundation
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 import Metal
 import QuartzCore
 import simd
+
+// On iOS, AppKit types (NSView/NSWindow) are unavailable. We expose platform-
+// neutral type aliases so the rest of the file can reference the same names
+// without littering every signature with #if branches.
+#if os(macOS)
+public typealias MetallumView = NSView
+public typealias MetallumWindow = NSWindow
+#elseif os(iOS)
+public typealias MetallumView = UIView
+public typealias MetallumWindow = UIWindow
+#endif
 
 private struct DepthStencilKey: Hashable {
     let deviceAddress: UInt
@@ -388,8 +403,14 @@ public func metallum_copy_device_name(
 }
 
 @_cdecl("metallum_NSWindow_backingScaleFactor")
-public func metallum_NSWindow_backingScaleFactor(_ window: NSWindow) -> Double {
-    Double(window.backingScaleFactor)
+public func metallum_NSWindow_backingScaleFactor(_ window: MetallumWindow) -> Double {
+    #if os(macOS)
+    return Double(window.backingScaleFactor)
+    #elseif os(iOS)
+    // UIWindow on iOS does not expose backingScaleFactor directly; the on-screen
+    // scale is determined by UIScreen.main.scale (or the window's screen).
+    return Double(window.screen?.scale ?? UIScreen.main.scale)
+    #endif
 }
 
 @_cdecl("metallum_create_metal_layer")
@@ -407,17 +428,24 @@ public func metallum_create_metal_layer(
 
 @_cdecl("metallum_NSView_setMetalLayer")
 public func metallum_NSView_setMetalLayer(
-    _ view: NSView,
+    _ view: MetallumView,
     _ layer: CAMetalLayer
 ) {
+    #if os(macOS)
     view.wantsLayer = true
     view.layer = layer
+    #elseif os(iOS)
+    // UIView is layer-backed by default; just assign the metal layer.
+    view.layer = layer
+    #endif
 }
 
 @_cdecl("metallum_NSView_clearLayer")
-public func metallum_NSView_clearLayer(_ view: NSView) {
+public func metallum_NSView_clearLayer(_ view: MetallumView) {
     view.layer = nil
+    #if os(macOS)
     view.wantsLayer = false
+    #endif
 }
 
 @_cdecl("metallum_set_debug_labels_enabled")
