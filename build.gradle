@@ -141,42 +141,47 @@ tasks.register("buildIOSSpvc") {
 			return
 		}
 
+		// Helper: run a command and throw on failure
+		def runCmd = { List<String> cmd, File workDir = null ->
+			logger.lifecycle("[buildIOSSpvc] $ ${cmd.join(' ')}")
+			def pb = new ProcessBuilder(cmd)
+			if (workDir != null) pb.directory(workDir)
+			pb.redirectErrorStream(true)
+			def proc = pb.start()
+			proc.inputStream.eachLine { logger.lifecycle("[buildIOSSpvc] $it") }
+			def exitCode = proc.waitFor()
+			if (exitCode != 0) {
+				throw new GradleException("Command failed (exit $exitCode): ${cmd.join(' ')}")
+			}
+		}
+
 		// 1. Clone SPIRV-Cross (shallow, specific tag)
 		if (!spvcSourceDir.exists()) {
-			project.exec {
-				commandLine "git", "clone", "--depth", "1", "--branch", spvcTag,
-					"https://github.com/KhronosGroup/SPIRV-Cross.git", spvcSourceDir.absolutePath
-			}
+			runCmd(["git", "clone", "--depth", "1", "--branch", spvcTag,
+				"https://github.com/KhronosGroup/SPIRV-Cross.git", spvcSourceDir.absolutePath])
 		}
 
 		// 2. CMake configure + build
 		spvcBuildDir.mkdirs()
-		project.exec {
-			workingDir spvcBuildDir
-			commandLine "cmake",
-				"-DCMAKE_TOOLCHAIN_FILE=${spvcSourceDir.absolutePath}/cmake/toolchains/ios.cmake",
-				"-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
-				"-DCMAKE_OSX_ARCHITECTURES=arm64",
-				"-DSPIRV_CROSS_C_API=ON",
-				"-DSPIRV_CROSS_ENABLE_MSL=ON",
-				"-DSPIRV_CROSS_ENABLE_GLSL=ON",
-				"-DSPIRV_CROSS_ENABLE_HLSL=OFF",
-				"-DSPIRV_CROSS_ENABLE_CPP=OFF",
-				"-DSPIRV_CROSS_ENABLE_REFLECT=OFF",
-				"-DSPIRV_CROSS_ENABLE_UTIL=OFF",
-				"-DBUILD_SHARED_LIBS=ON",
-				"-DCMAKE_BUILD_TYPE=Release",
-				spvcSourceDir.absolutePath
-		}
-		project.exec {
-			workingDir spvcBuildDir
-			commandLine "cmake", "--build", ".", "--config", "Release", "-j", "4"
-		}
+		runCmd(["cmake",
+			"-DCMAKE_TOOLCHAIN_FILE=${spvcSourceDir.absolutePath}/cmake/toolchains/ios.cmake",
+			"-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
+			"-DCMAKE_OSX_ARCHITECTURES=arm64",
+			"-DSPIRV_CROSS_C_API=ON",
+			"-DSPIRV_CROSS_ENABLE_MSL=ON",
+			"-DSPIRV_CROSS_ENABLE_GLSL=ON",
+			"-DSPIRV_CROSS_ENABLE_HLSL=OFF",
+			"-DSPIRV_CROSS_ENABLE_CPP=OFF",
+			"-DSPIRV_CROSS_ENABLE_REFLECT=OFF",
+			"-DSPIRV_CROSS_ENABLE_UTIL=OFF",
+			"-DBUILD_SHARED_LIBS=ON",
+			"-DCMAKE_BUILD_TYPE=Release",
+			spvcSourceDir.absolutePath], spvcBuildDir)
+		runCmd(["cmake", "--build", ".", "--config", "Release", "-j", "4"], spvcBuildDir)
 
 		// 3. Copy libspvc.dylib to resources
 		def builtLib = file("${spvcBuildDir}/libspvc.dylib")
 		if (!builtLib.exists()) {
-			// CMake may put it in a different location
 			builtLib = file("${spvcBuildDir}/Release/libspvc.dylib")
 		}
 		if (!builtLib.exists()) {
