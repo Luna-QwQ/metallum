@@ -563,7 +563,7 @@ public func metallum_NSView_setMetalLayer(
     layer.frame = view.bounds
     // Keep the layer in sync with the view's bounds when the view resizes
     // (e.g. device rotation, fullscreen transitions on PojavLauncher/Amethyst).
-    layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+    layer.autoresizingMask = CAAutoresizingMask.layerWidthSizable.union(.layerHeightSizable)
     view.layer.sublayers = [layer]
     #endif
 }
