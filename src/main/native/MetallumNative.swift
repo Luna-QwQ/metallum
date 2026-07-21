@@ -388,51 +388,94 @@ public func metallum_create_system_default_device() -> UnsafeMutableRawPointer? 
 /// Locates the host launcher's game surface UIView on iOS without requiring
 /// the host to publish a pointer via a system property.
 ///
-/// Amethyst-iOS (and PojavLauncher_iOS) expose the surface view through the
-/// `SurfaceViewController` class method `+ surface`, which returns the
-/// `GameSurfaceView` instance backing the game. We resolve it via the ObjC
-/// runtime so Metallum (loaded as a separate dylib) does not need a compile-
-/// time dependency on the launcher's headers.
+/// Strategy 1: call `+[SurfaceViewController surface]` directly. This class
+/// method just returns a static variable (`pojavWindow`) — it does NOT touch
+/// UIKit, so it's safe to call from any thread (including the JVM render
+/// thread) without dispatching to main. This is the preferred path because
+/// the main thread may be blocked inside `launchJVM`, making
+/// `DispatchQueue.main.sync` deadlock.
 ///
-/// IMPORTANT: UIKit must be accessed from the main thread. The JVM's render
-/// thread is NOT the main thread, so this function dispatches the lookup to
-/// the main queue synchronously.
+/// Strategy 2 (fallback): dispatch to the main thread with a timeout and
+/// walk the view hierarchy for a `GameSurfaceView`. This handles launchers
+/// that don't expose `+surface` but requires the main thread to be runnable.
 @_cdecl("metallum_ios_find_surface_view")
 public func metallum_ios_find_surface_view() -> UnsafeMutableRawPointer? {
+    // Strategy 1: +[SurfaceViewController surface] — no UIKit, any thread.
+    if let view = callSurfaceViewControllerSurface() {
+        return view
+    }
+
+    // Strategy 2: dispatch to main with a timeout and walk the view hierarchy.
+    // If the main thread is blocked (e.g. inside launchJVM), the timeout
+    // fires and we return nil rather than deadlocking forever.
     if Thread.isMainThread {
-        return findSurfaceViewOnMainThread()
+        return findViewInHierarchy()
     }
-    // Dispatch to main thread synchronously. This is safe because
-    // createDevice() is called early during Minecraft init, before the
-    // render loop starts, so the main thread is not blocked on the render
-    // thread (no deadlock risk).
-    var result: UnsafeMutableRawPointer?
-    DispatchQueue.main.sync {
-        result = findSurfaceViewOnMainThread()
+    let semaphore = DispatchSemaphore(value: 0)
+    var hierarchyResult: UnsafeMutableRawPointer? = nil
+    DispatchQueue.main.async {
+        hierarchyResult = findViewInHierarchy()
+        semaphore.signal()
     }
-    return result
+    let timeout: DispatchTime = .now() + .seconds(3)
+    if semaphore.wait(timeout: timeout) == .timedOut {
+        NSLog("[Metallum] WARNING: main thread did not respond within 3s; view-hierarchy lookup skipped")
+        return nil
+    }
+    return hierarchyResult
 }
 
-private func findSurfaceViewOnMainThread() -> UnsafeMutableRawPointer? {
-    // SurfaceViewController is an Amethyst/PojavLauncher class. Look it up
-    // at runtime via the ObjC runtime; if Amethyst isn't the host (e.g. a
-    // future launcher without this class), fall back to walking the key
-    // window's view hierarchy for the largest subview.
-    if let cls = objc_getClass("SurfaceViewController") as? NSObject.Type {
-        // +[SurfaceViewController surface] — calling perform on the class
-        // object (metatype) invokes the class method.
-        if let result = cls.perform(NSSelectorFromString("surface")) {
-            let view = result.takeUnretainedValue()
-            return Unmanaged.passUnretained(view as AnyObject).toOpaque()
-        }
+/// Calls `+[SurfaceViewController surface]` via the ObjC runtime. This method
+/// only returns a static variable, so it's thread-safe without main-thread
+/// dispatch.
+private func callSurfaceViewControllerSurface() -> UnsafeMutableRawPointer? {
+    guard let cls = objc_getClass("SurfaceViewController") else {
+        NSLog("[Metallum] SurfaceViewController class not found")
+        return nil
     }
-    // Fallback: the most deeply nested large UIView under the key window.
+    let sel = sel_registerName("surface")
+    // Check the class actually responds to this selector.
+    let responds = class_respondsToSelector(cls, sel)
+    if !responds {
+        NSLog("[Metallum] SurfaceViewController does not respond to 'surface'")
+        return nil
+    }
+    let msgSend = objc_msgSend as (@convention(c) (AnyClass, Selector) -> AnyObject?)
+    guard let view = msgSend(cls, sel) else {
+        NSLog("[Metallum] +[SurfaceViewController surface] returned nil")
+        return nil
+    }
+    NSLog("[Metallum] +[SurfaceViewController surface] returned \(view)")
+    return Unmanaged.passUnretained(view).toOpaque()
+}
+
+private func findViewInHierarchy() -> UnsafeMutableRawPointer? {
+    let gameSurfaceClass = objc_getClass("GameSurfaceView") as? NSObject.Type
     let windows = UIApplication.shared.connectedScenes
         .compactMap({ $0 as? UIWindowScene })
         .flatMap({ $0.windows })
+    NSLog("[Metallum] view hierarchy walk: \(windows.count) window(s); GameSurfaceView class found: \(gameSurfaceClass != nil)")
+    for window in windows {
+        if let found = findViewInView(window, targetClass: gameSurfaceClass) {
+            return found
+        }
+    }
     let keyWindow = windows.first(where: { $0.isKeyWindow }) ?? windows.first
     if let root = keyWindow?.rootViewController?.view {
         return findLargestSubview(root)
+    }
+    return nil
+}
+
+/// Recursively searches a view hierarchy for a view of the given class.
+private func findViewInView(_ view: UIView, targetClass: NSObject.Type?) -> UnsafeMutableRawPointer? {
+    if let targetClass = targetClass, view.isKind(of: targetClass) {
+        return Unmanaged.passUnretained(view).toOpaque()
+    }
+    for sub in view.subviews {
+        if let found = findViewInView(sub, targetClass: targetClass) {
+            return found
+        }
     }
     return nil
 }
