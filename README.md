@@ -1,49 +1,96 @@
-## Metallum
-Metallum is an experimental rendering backend for Minecraft on macOS and iOS that uses Apple's Metal API instead of OpenGL/Vulkan. It provides a more native rendering path and aims to improve performance and efficiency on Apple Silicon and iOS devices.
+# Metallum
 
-On macOS, the Metal rendering backend is loaded directly via the native bridge. On iOS, the precompiled iOS dylib (`libmetallum.dylib`, arm64, target iOS 14.0+) is included in the jar and intended to be consumed by [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS) .
+Metallum 是一个基于 Apple Metal API 的 Minecraft 渲染后端模组（Fabric Mod），用于在 macOS 和 iOS 上替代 OpenGL/Vulkan 渲染路径，为 Apple Silicon 和 iOS 设备提供更高效的 GPU 渲染。
 
-This project is still experimental. Performance, stability, and compatibility may vary depending on your system and installed mods. If you encounter bugs, please report them on GitHub.
+本项目仍处于实验性阶段（PoC），性能与稳定性可能因系统和已安装模组而异。
 
-Compatible with Sodium.
+## 架构
 
-vibecoded as hell
+| 层级 | 实现 |
+|------|------|
+| 入口点 | `com.metallum.Metallum`（PreLaunch + ModInitializer） |
+| GPU 后端 | `MetalBackend` → `MetalDevice` → `MetalCommandEncoder` / `MetalRenderPass` |
+| 着色器编译器 | `MetalCrossShaderCompiler`（GLSL/SPIR-V → MSL，基于 SPIRV-Cross） |
+| 原生桥接 | `MetalNativeBridge`（Java Foreign Memory API ↔ Swift C 导出函数） |
+| 原生实现 | `MetallumNative.swift`（Metal API 调用、CAMetalLayer 管理、MSL 内联着色器） |
+| 模组注入 | Mixin 注入 Minecraft `PreferredGraphicsApi` 和 Sodium 渲染后端选择 |
 
-## Requirements
+## 兼容性
 
-### macOS
-- macOS
-- Apple Silicon (M1 or newer)
+- **Sodium**：通过 Mixin 注入 `DrawBackend`、`DrawContext` 和 `SodiumPreferredGraphicsApi`，将 Metal 后端映射为 Sodium 的间接绘制路径
+- **macOS**：Apple Silicon（M1 或更新），通过 Native Bridge 直接加载 `libmetallum.dylib`
+- **iOS**：iOS 14.0 或更高版本，预编译 `libmetallum.dylib`（arm64）和 `libspvc.dylib`（带 MSL 后端）内置于 jar 中
 
-### iOS
-- iOS 14.0 or later
-- An iPhone, iPad, or iPod touch capable of running [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS)
-- Amethyst-iOS installed via TrollStore, AltStore, SideStore, or a jailbreak
+## 构建
 
-## iOS Installation
+### 前置条件
 
-Metallum is packaged as a Fabric mod and is loaded automatically on Amethyst-iOS when installed as a mod. The iOS native library (`libmetallum.dylib`, arm64) is bundled inside the jar and is loaded by the launcher at runtime via the embedded native bridge.
+- macOS（Apple Silicon）
+- Xcode（含 iOS SDK，用于 iOS 目标）
+- Java 25
+- Swift 编译器（`swiftc`）
 
-### Steps
+### 构建命令
 
-1. **Install Amethyst-iOS** on your device following the [official instructions](https://github.com/AngelAuraMC/Amethyst-iOS). The recommended approach is to use TrollStore for permanent signing and automatic JIT.
+```bash
+# 完整构建（macOS 原生 + iOS 原生 + iOS libspvc）
+./gradlew build
 
-2. **Embed the iOS dylib into the Amethyst app bundle.** This is required — iOS forbids loading unsigned dylibs from writable directories, so the dylib must live inside the app bundle's `Frameworks/` directory and be signed with the app's signing identity. The easiest way is to rebuild the Amethyst IPA with the dylib included:
-   - Extract `natives/ios/libmetallum.dylib` from the Metallum jar (any unzip tool will do).
-   - Place it at `Amethyst.app/Frameworks/libmetallum.dylib` inside the IPA.
-   - Re-sign the app. With TrollStore, simply re-import the modified IPA; TrollStore will re-sign it automatically. With AltStore/SideStore, rebuild and re-sign via your signing workflow.
+# 仅编译 macOS 原生 dylib
+./gradlew buildMacNative
 
-3. **Download the latest Metallum jar** from the [Releases](https://github.com/Luna-QwQ/metallum/releases) page.
+# 仅编译 iOS 原生 dylib（需要 Xcode + iOS SDK）
+./gradlew buildIOSNative
 
-4. **Place the jar** in the `mods/` folder of your Minecraft instance on Amethyst-iOS (typically located at `~/Documents/minecraft/mods/` or accessible via the Amethyst file manager).
+# 仅编译 iOS libspvc（SPIRV-Cross MSL 后端，需要 Xcode + iOS SDK）
+./gradlew buildIOSSpvc
+```
 
-5. **Launch Minecraft** through Amethyst-iOS. Metallum will automatically detect the Metal backend and use it instead of the default OpenGL/Vulkan renderer.
+构建产物：
+- `src/main/resources/natives/macos/libmetallum.dylib` — macOS arm64, target 14.0
+- `src/main/resources/natives/ios/libmetallum.dylib` — iOS arm64, target 14.0
+- `src/main/resources/natives/ios/libspvc.dylib` — SPIRV-Cross C API（MSL 后端），iOS arm64
 
-### Notes
+### CI/CD
 
-- The iOS dylib is built with target `arm64-apple-ios14.0` and is **unsigned** in the jar. It must be re-signed as part of the Amethyst app bundle — iOS will refuse to `dlopen` it from any writable directory due to code-signing restrictions.
-- If you see a crash like `Cannot open library: .../tmp/metallum-native-*.dylib`, it means the dylib was not embedded in the app bundle's `Frameworks/` directory and the launcher tried to extract it to a writable tmp directory (which iOS rejects). Follow step 2 above to embed the dylib.
-- On developer devices with relaxed signing (e.g. jailbroken with `ldid` ad-hoc signing), the jar-extraction fallback may work without embedding — but this is not supported on stock iOS.
-- If you encounter crashes or rendering issues, try disabling other rendering-related mods first.
-- Metallum requires Fabric Loader; make sure your Amethyst instance is using Fabric.
+GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构建，推送带 `v*` tag 时自动发布到 Modrinth 和 GitHub Releases。
 
+## iOS 使用说明
+
+Metallum 在 iOS 上仅支持 **Amethyst-iOS-MyRemastered** 启动器运行：
+
+[https://github.com/herbrine8403/Amethyst-iOS-MyRemastered](https://github.com/herbrine8403/Amethyst-iOS-MyRemastered)
+
+Amethyst-iOS-MyRemastered 已通过 [PR #67](https://github.com/herbrine8403/Amethyst-iOS-MyRemastered/pull/67) 合并适配 Metallum 的原生桥和 SPIRV-Cross MSL 后端加载。
+
+### 安装步骤
+
+1. 在设备上安装 Amethyst-iOS-MyRemastered，推荐使用 TrollStore 进行永久签名和自动 JIT
+2. 将 Metallum jar 放入 Minecraft 实例的 `mods/` 目录（通常位于 `~/Documents/minecraft/mods/`）
+3. 通过 Amethyst-iOS-MyRemastered 启动 Minecraft，Metallum 将自动检测并使用 Metal 后端
+
+### 注意事项
+
+- `libmetallum.dylib` 和 `libspvc.dylib` 由 Amethyst-iOS-MyRemastered 启动器在运行时加载，无需手动嵌入
+- 必须使用 Fabric Loader
+- 如遇渲染问题，先尝试禁用其他渲染相关模组
+
+## macOS 使用说明
+
+1. 下载最新 Metallum jar 并放入 `mods/` 目录
+2. 启动 Minecraft，在视频设置中将图形后端选择为 "Prefer Metal"
+3. 需要与其他 Fabric 模组配合使用时，确保 Sodium 版本兼容（`mc26.2-0.9.0-fabric`）
+
+## 技术依赖
+
+| 依赖 | 版本 |
+|------|------|
+| Minecraft | 26.2（对应 1.21.x 快照） |
+| Fabric Loader | >= 0.19.2 |
+| Sodium | mc26.2-0.9.0-fabric |
+| Java | >= 25 |
+| Fabric Loom | 1.16-SNAPSHOT |
+
+## 许可
+
+MIT License — 详见 [LICENSE](LICENSE)
