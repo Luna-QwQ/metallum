@@ -242,6 +242,16 @@ tasks.named("processResources") {
 	dependsOn(tasks.named("buildIOSSpvc"))
 }
 
+// sourcesJar (from `java { withSourcesJar() }`) also scans src/main/resources,
+// so it must declare an explicit dependency on the native build tasks that
+// write into that directory. Without this, Gradle 9 fails with
+// "uses this output of task ':buildIOSSpvc' without declaring an explicit dependency".
+tasks.named("sourcesJar") {
+	dependsOn(tasks.named("buildMacNative"))
+	dependsOn(tasks.named("buildIOSNative"))
+	dependsOn(tasks.named("buildIOSSpvc"))
+}
+
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
 }
