@@ -7,7 +7,7 @@ import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Metallum implements ModInitializer, PreLaunchEntryPoint {
+public class Metallum implements ModInitializer, PreLaunchEntrypoint {
     public static final String MOD_ID = "metallum";
 
     // This logger is used to write text to the console and the log file.
