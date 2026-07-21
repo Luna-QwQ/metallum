@@ -57,17 +57,8 @@ GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构
 
 ## iOS 使用说明
 
-Metallum 在 iOS 上仅支持 **Amethyst-iOS-MyRemastered** 启动器运行：
-
-[https://github.com/herbrine8403/Amethyst-iOS-MyRemastered](https://github.com/herbrine8403/Amethyst-iOS-MyRemastered)
-
-Amethyst-iOS-MyRemastered 已通过 [PR #67](https://github.com/herbrine8403/Amethyst-iOS-MyRemastered/pull/67) 合并适配 Metallum 的原生桥和 SPIRV-Cross MSL 后端加载。
-
-### 安装步骤
-
-1. 在设备上安装 Amethyst-iOS-MyRemastered，推荐使用 TrollStore 进行永久签名和自动 JIT
+1. 在设备上安装IOS启动器，推荐使用 TrollStore 进行永久签名和自动 JIT
 2. 将 Metallum jar 放入 Minecraft 实例的 `mods/` 目录（通常位于 `~/Documents/minecraft/mods/`）
-3. 通过 Amethyst-iOS-MyRemastered 启动 Minecraft，Metallum 将自动检测并使用 Metal 后端
 
 ### 注意事项
 
