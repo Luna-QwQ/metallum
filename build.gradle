@@ -164,12 +164,14 @@ tasks.register("buildIOSSpvc") {
 				"https://github.com/KhronosGroup/SPIRV-Cross.git", spvcSourceDir.absolutePath])
 		}
 
-		// 2. CMake configure + build
+		// 2. CMake configure + build (use built-in iOS support, no toolchain file)
 		spvcBuildDir.mkdirs()
 		runCmd(["cmake",
-			"-DCMAKE_TOOLCHAIN_FILE=${spvcSourceDir.absolutePath}/cmake/toolchains/ios.cmake",
+			"-G", "Unix Makefiles",
+			"-DCMAKE_SYSTEM_NAME=iOS",
 			"-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
 			"-DCMAKE_OSX_ARCHITECTURES=arm64",
+			"-DCMAKE_MAKE_PROGRAM=/usr/bin/make",
 			"-DSPIRV_CROSS_C_API=ON",
 			"-DSPIRV_CROSS_ENABLE_MSL=ON",
 			"-DSPIRV_CROSS_ENABLE_GLSL=ON",
