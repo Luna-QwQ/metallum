@@ -256,6 +256,44 @@ tasks.register("buildIOSSpvc") {
 		} catch (IOException ignored) {
 			logger.lifecycle("[buildIOSSpvc] nm not available, skipping MSL symbol verification")
 		}
+
+		// 5. Verify the dylib targets iOS (not macOS). CMake with
+		//    CMAKE_SYSTEM_NAME=iOS should produce a Mach-O with LC_BUILD_VERSION
+		//    platform=ios. If CMake silently fell back to the host (macOS), the
+		//    dylib would be a macOS arm64 binary that iOS refuses to load
+		//    (dlopen fails with "no suitable image found") or, worse, loads via
+		//    the simulator path on Apple Silicon Macs.
+		//    `lipo -info` shows architecture; `otool -l` shows the LC_BUILD_VERSION
+		//    load command whose `platform` field distinguishes iOS (2) from macOS (1).
+		try {
+			def lipoOut = new ByteArrayOutputStream()
+			def lipoProc = ["lipo", "-info", builtLib.absolutePath].execute()
+			lipoProc.waitForProcessOutput(lipoOut, null)
+			logger.lifecycle("[buildIOSSpvc] Architecture: " + lipoOut.toString().trim())
+
+			def otoolOut = new ByteArrayOutputStream()
+			def otoolProc = ["otool", "-l", builtLib.absolutePath].execute()
+			otoolProc.waitForProcessOutput(otoolOut, null)
+			def otoolOutput = otoolOut.toString()
+			// LC_BUILD_VERSION or LC_VERSION_MIN_IPHONEOS indicates iOS targeting
+			def isIOS = otoolOutput.contains("LC_VERSION_MIN_IPHONEOS") ||
+					(otoolOutput.contains("LC_BUILD_VERSION") && otoolOutput.contains("platform 2"))
+			def isMacOS = otoolOutput.contains("LC_VERSION_MIN_MACOSX") ||
+					(otoolOutput.contains("LC_BUILD_VERSION") && otoolOutput.contains("platform 1"))
+			logger.lifecycle("[buildIOSSpvc] LC_BUILD_VERSION platform: " +
+					(isIOS ? "iOS" : isMacOS ? "macOS" : "unknown"))
+			if (!isIOS) {
+				throw new GradleException(
+						"[buildIOSSpvc] FATAL: libspvc.dylib was built for macOS, not iOS. " +
+						"CMAKE_SYSTEM_NAME=iOS did not take effect — the dylib cannot be loaded on iOS devices. " +
+						"Ensure the iOS SDK is installed (xcrun --sdk iphoneos --show-sdk-path) and " +
+						"CMake picks it up. otool output excerpt: " +
+						otoolOutput.substring(0, Math.min(otoolOutput.length(), 800))
+				)
+			}
+		} catch (IOException ignored) {
+			logger.lifecycle("[buildIOSSpvc] lipo/otool not available, skipping platform verification")
+		}
 	}
 }
 

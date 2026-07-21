@@ -16,6 +16,9 @@
   "icon": "assets/metallum/icon.png",
   "environment": "*",
   "entrypoints": {
+    "preLaunch": [
+      "com.metallum.Metallum"
+    ],
     "main": [
       "com.metallum.Metallum"
     ]
