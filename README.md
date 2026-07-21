@@ -58,7 +58,7 @@ GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构
 ## iOS 使用说明
 
 1. 在IOS系统上安装Minecraft Java Edition启动器
-2. 将 Metallum jar 放入 Minecraft 实例的 `mods/` 目录（通常位于 `~/Documents/minecraft/mods/`）
+2. 将 Metallum jar 放入 Minecraft 实例的 `mods/` 目录
 
 ### 注意事项
 
