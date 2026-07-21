@@ -2,7 +2,7 @@
 
 Metallum 是一个基于 Apple Metal API 的 Minecraft 渲染后端模组（Fabric Mod），用于在 macOS 和 iOS 上替代 OpenGL/Vulkan 渲染路径，为 Apple Silicon 和 iOS 设备提供更高效的 GPU 渲染。
 
-本项目仍处于实验性阶段（PoC），性能与稳定性可能因系统和已安装模组而异。
+本项目仍处于实验性阶段（PoC），性能与稳定性可能因系统而异。
 
 ## 架构
 
