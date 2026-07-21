@@ -1,6 +1,7 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.Metallum;
+import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BindGroupLayout.UniformDescription;
@@ -16,6 +17,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.Configuration;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.util.spvc.Spv;
@@ -23,8 +25,13 @@ import org.lwjgl.util.spvc.Spvc;
 import org.lwjgl.util.spvc.SpvcMslShaderInterfaceVar2;
 import org.lwjgl.util.spvc.SpvcReflectedResource;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -36,7 +43,81 @@ final class MetalCrossShaderCompiler {
     private static final Pattern VERTEX_ENTRY_PATTERN = Pattern.compile("\\bvertex\\s+\\w+\\s+(\\w+)\\s*\\(");
     private static final Pattern FRAGMENT_ENTRY_PATTERN = Pattern.compile("\\bfragment\\s+\\w+\\s+(\\w+)\\s*\\(");
 
+    /**
+     * 在 iOS 上，Amethyst 启动器捆绑的 libMoltenVK.dylib 内部静态链接了 SPIRV-Cross，
+     * 但只编译了 Vulkan 后端（MoltenVK 自己用 C++ API 做 SPIR-V→MSL 转换，不需要 C API
+     * 的 MSL 后端）。LWJGL 在 iOS 上没有自己的 iOS natives，回退到 dlsym(RTLD_DEFAULT,
+     * ...) 时找到的是 MoltenVK 的精简版符号，导致 spvc_context_create_compiler(
+     * SPVC_BACKEND_MSL) 返回 -4 "Invalid backend"。
+     *
+     * 修复：在 LWJGL 的 Spvc 类被首次加载之前，从 jar 中抽取完整版 libspvc.dylib
+     * （带 MSL 后端），用 System.load 加载（经 Amethyst 的 hooked dlopen），然后设置
+     * Configuration.SPVC_LIBRARY_NAME 指向该路径。LWJGL 加载时会复用 JVM 已加载的
+     * 镜像，dlsym(handle, ...) 只查询该镜像的符号，不会被 MoltenVK 抢占。
+     */
+    static {
+        if (MetalNativeBridge.isIOS()) {
+            configureBundledSpvcLibrary();
+        }
+    }
+
     private MetalCrossShaderCompiler() {
+    }
+
+    /**
+     * 在 iOS 上从 jar 中抽取完整版 libspvc.dylib 并设置 LWJGL Configuration。
+     *
+     * 库文件位于 jar 的 /natives/ios/libspvc.dylib，由 build.gradle 的 buildIOSSpvc
+     * 任务从 SPIRV-Cross 源码编译（启用 C API + MSL 后端）。
+     *
+     * 抽取路径选择与 MetalNativeBridge.createIOSSymbolLookup 相同的策略：
+     * 优先使用 pojav.launcher.home / POJAV_HOME / user.home，最后回退到 java.io.tmpdir。
+     * System.load 经 Amethyst 的 hooked dlopen 加载，能绕过 iOS 代码签名限制。
+     */
+    private static void configureBundledSpvcLibrary() {
+        String resourcePath = "/natives/ios/libspvc.dylib";
+        try (InputStream stream = MetalCrossShaderCompiler.class.getResourceAsStream(resourcePath)) {
+            if (stream == null) {
+                Metallum.LOGGER.warn("[MetalCross] libspvc.dylib not found in jar ({}); falling back to LWJGL default. " +
+                        "On iOS this likely means MoltenVK's stripped SPIRV-Cross will be used (no MSL backend).", resourcePath);
+                return;
+            }
+            // 抽取到可写目录（与 MetalNativeBridge 相同的策略）
+            Path tempLib = null;
+            IOException lastError = null;
+            for (String dirProperty : new String[]{"pojav.launcher.home", "POJAV_HOME", "user.home", "java.io.tmpdir"}) {
+                String dir = System.getProperty(dirProperty);
+                if (dir == null || dir.isBlank()) continue;
+                Path dirPath = Path.of(dir);
+                if (!Files.isDirectory(dirPath)) continue;
+                try {
+                    tempLib = dirPath.resolve("libspvc_metallum.dylib");
+                    Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
+                    break;
+                } catch (IOException e) {
+                    lastError = e;
+                    tempLib = null;
+                }
+            }
+            if (tempLib == null) {
+                // 最后回退到临时文件
+                tempLib = Files.createTempFile("spvc-metallum-", ".dylib");
+                Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
+            }
+            tempLib.toFile().deleteOnExit();
+
+            // System.load 经 Amethyst 的 hooked dlopen 加载（能绕过 iOS 代码签名）
+            System.load(tempLib.toString());
+            // 让 LWJGL 复用 JVM 已加载的镜像，避免 dlsym(RTLD_DEFAULT) 被 MoltenVK 抢占
+            Configuration.SPVC_LIBRARY_NAME.set(tempLib.toString());
+            Metallum.LOGGER.info("[MetalCross] Loaded bundled libspvc.dylib (with MSL backend) from {}", tempLib);
+        } catch (IOException e) {
+            Metallum.LOGGER.error("[MetalCross] Failed to extract libspvc.dylib from jar", e);
+        } catch (UnsatisfiedLinkError e) {
+            Metallum.LOGGER.error("[MetalCross] Failed to load bundled libspvc.dylib", e);
+        } catch (Throwable t) {
+            Metallum.LOGGER.error("[MetalCross] Unexpected error configuring libspvc.dylib", t);
+        }
     }
 
     static MetalCompiledRenderPipeline compile(final MetalDevice device, final RenderPipeline pipeline, final ShaderSource shaderSource) {

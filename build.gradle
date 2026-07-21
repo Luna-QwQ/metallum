@@ -111,12 +111,92 @@ tasks.register("buildIOSNative", Exec) {
 	}
 }
 
+// Builds a full-featured libspvc.dylib (SPIRV-Cross C API with MSL backend)
+// for iOS arm64. This is required because Amethyst's bundled libMoltenVK.dylib
+// statically links SPIRV-Cross with only the Vulkan backend — LWJGL's spvc
+// bindings pick up MoltenVK's stripped symbols via dlsym(RTLD_DEFAULT),
+// causing spvc_context_create_compiler(SPVC_BACKEND_MSL) to fail with -4
+// "Invalid backend".
+//
+// We build SPIRV-Cross from source with SPIRV_CROSS_C_API=ON and
+// SPIRV_CROSS_ENABLE_MSL=ON, then bundle the resulting libspvc.dylib in the
+// jar. At runtime, MetalCrossShaderCompiler extracts it and sets
+// Configuration.SPVC_LIBRARY_NAME so LWJGL uses our full version instead of
+// MoltenVK's stripped one.
+tasks.register("buildIOSSpvc") {
+	onlyIf { iosSdkPath != null }
+
+	def spvcSourceDir = file("${buildDir}/spirv-cross-src")
+	def spvcBuildDir = file("${buildDir}/spirv-cross-build")
+	def spvcOutput = file("src/main/resources/natives/ios/libspvc.dylib")
+	def spvcTag = "vulkan-sdk-1.3.290.0"
+
+	inputs.property "tag", spvcTag
+	outputs.file spvcOutput
+
+	doLast {
+		file("src/main/resources/natives/ios").mkdirs()
+		if (spvcOutput.exists()) {
+			logger.lifecycle("[buildIOSSpvc] libspvc.dylib already exists, skipping build")
+			return
+		}
+
+		// 1. Clone SPIRV-Cross (shallow, specific tag)
+		if (!spvcSourceDir.exists()) {
+			exec {
+				commandLine "git", "clone", "--depth", "1", "--branch", spvcTag,
+					"https://github.com/KhronosGroup/SPIRV-Cross.git", spvcSourceDir.absolutePath
+			}
+		}
+
+		// 2. CMake configure + build
+		spvcBuildDir.mkdirs()
+		exec {
+			workingDir spvcBuildDir
+			commandLine "cmake",
+				"-DCMAKE_TOOLCHAIN_FILE=${spvcSourceDir.absolutePath}/cmake/toolchains/ios.cmake",
+				"-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
+				"-DCMAKE_OSX_ARCHITECTURES=arm64",
+				"-DSPIRV_CROSS_C_API=ON",
+				"-DSPIRV_CROSS_ENABLE_MSL=ON",
+				"-DSPIRV_CROSS_ENABLE_GLSL=ON",
+				"-DSPIRV_CROSS_ENABLE_HLSL=OFF",
+				"-DSPIRV_CROSS_ENABLE_CPP=OFF",
+				"-DSPIRV_CROSS_ENABLE_REFLECT=OFF",
+				"-DSPIRV_CROSS_ENABLE_UTIL=OFF",
+				"-DBUILD_SHARED_LIBS=ON",
+				"-DCMAKE_BUILD_TYPE=Release",
+				spvcSourceDir.absolutePath
+		}
+		exec {
+			workingDir spvcBuildDir
+			commandLine "cmake", "--build", ".", "--config", "Release", "-j", "4"
+		}
+
+		// 3. Copy libspvc.dylib to resources
+		def builtLib = file("${spvcBuildDir}/libspvc.dylib")
+		if (!builtLib.exists()) {
+			// CMake may put it in a different location
+			builtLib = file("${spvcBuildDir}/Release/libspvc.dylib")
+		}
+		if (!builtLib.exists()) {
+			throw new GradleException("libspvc.dylib not found in build output: ${spvcBuildDir}")
+		}
+		spvcOutput.parentFile.mkdirs()
+		builtLib.withInputStream { ins ->
+			spvcOutput.withOutputStream { outs -> outs << ins }
+		}
+		logger.lifecycle("[buildIOSSpvc] Built libspvc.dylib -> ${spvcOutput}")
+	}
+}
+
 tasks.named("processResources") {
 	dependsOn(tasks.named("buildMacNative"))
 	// The iOS native is only built on a macOS host with the iOS SDK installed.
 	// It is optional: if the toolchain is missing the task is skipped and the
 	// iOS dylib is simply not packaged in the jar.
 	dependsOn(tasks.named("buildIOSNative"))
+	dependsOn(tasks.named("buildIOSSpvc"))
 }
 
 tasks.withType(JavaCompile).configureEach {

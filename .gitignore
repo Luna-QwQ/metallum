@@ -39,4 +39,5 @@ replay_*.log
 *.hprof
 *.jfr
 /src/main/resources/natives/macos/*
+/src/main/resources/natives/ios/*
 libs/
