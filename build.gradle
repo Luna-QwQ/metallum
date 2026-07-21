@@ -166,32 +166,64 @@ tasks.register("buildIOSSpvc") {
 
 		// 2. CMake configure + build (use built-in iOS support, no toolchain file)
 		spvcBuildDir.mkdirs()
+		// SPIRV-Cross option names (see CMakeLists.txt for vulkan-sdk-1.3.290.0):
+		//   SPIRV_CROSS_SHARED  - builds the C API as a single shared library (libspirv-cross-c-shared.dylib)
+		//   SPIRV_CROSS_STATIC  - static libs (off, we only want shared)
+		//   SPIRV_CROSS_CLI     - CLI binary, requires HLSL/GLSL/MSL/CPP/REFLECT/UTIL; turn off so we can trim backends
+		//   SPIRV_CROSS_ENABLE_TESTS - tests (off)
+		// The shared lib target is `spirv-cross-c-shared`; the dylib carries VERSION/SOVERSION symlinks.
 		runCmd(["cmake",
 			"-G", "Unix Makefiles",
 			"-DCMAKE_SYSTEM_NAME=iOS",
 			"-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
 			"-DCMAKE_OSX_ARCHITECTURES=arm64",
 			"-DCMAKE_MAKE_PROGRAM=/usr/bin/make",
-			"-DSPIRV_CROSS_C_API=ON",
+			"-DSPIRV_CROSS_SHARED=ON",
+			"-DSPIRV_CROSS_STATIC=OFF",
+			"-DSPIRV_CROSS_CLI=OFF",
+			"-DSPIRV_CROSS_ENABLE_TESTS=OFF",
+			"-DSPIRV_CROSS_ENABLE_C_API=ON",
 			"-DSPIRV_CROSS_ENABLE_MSL=ON",
 			"-DSPIRV_CROSS_ENABLE_GLSL=ON",
 			"-DSPIRV_CROSS_ENABLE_HLSL=OFF",
 			"-DSPIRV_CROSS_ENABLE_CPP=OFF",
 			"-DSPIRV_CROSS_ENABLE_REFLECT=OFF",
 			"-DSPIRV_CROSS_ENABLE_UTIL=OFF",
-			"-DSPIRV_CROSS_ENABLE_CLI=OFF",
-			"-DBUILD_SHARED_LIBS=ON",
 			"-DCMAKE_BUILD_TYPE=Release",
 			spvcSourceDir.absolutePath], spvcBuildDir)
 		runCmd(["cmake", "--build", ".", "--config", "Release", "-j", "4"], spvcBuildDir)
 
-		// 3. Copy libspvc.dylib to resources
-		def builtLib = file("${spvcBuildDir}/libspvc.dylib")
-		if (!builtLib.exists()) {
-			builtLib = file("${spvcBuildDir}/Release/libspvc.dylib")
+		// 3. Locate built dylib. The shared target is `spirv-cross-c-shared`, so the
+		// file is `libspirv-cross-c-shared.dylib` (with versioned symlinks). Resolve
+		// the real file via canonical path to avoid copying a symlink.
+		def candidates = [
+			"${spvcBuildDir}/libspirv-cross-c-shared.dylib",
+			"${spvcBuildDir}/Release/libspirv-cross-c-shared.dylib",
+			"${spvcBuildDir}/src/libspirv-cross-c-shared.dylib"
+		]
+		def builtLib = null
+		for (String p : candidates) {
+			def f = file(p)
+			if (f.exists()) {
+				builtLib = f
+				break
+			}
 		}
-		if (!builtLib.exists()) {
-			throw new GradleException("libspvc.dylib not found in build output: ${spvcBuildDir}")
+		if (builtLib == null) {
+			// Fall back to a directory scan for the real (non-symlink) dylib.
+			def found = []
+			spvcBuildDir.eachFileRecurse { f ->
+				if (f.isFile() && f.name.startsWith("libspirv-cross-c-shared") && f.name.endsWith(".dylib")) {
+					found << f
+				}
+			}
+			if (found.size() > 0) {
+				// Prefer the shortest name (the unversioned symlink target resolved to a file)
+				builtLib = found.sort { it.name.length() }[0]
+			}
+		}
+		if (builtLib == null) {
+			throw new GradleException("libspirv-cross-c-shared.dylib not found in build output: ${spvcBuildDir}")
 		}
 		spvcOutput.parentFile.mkdirs()
 		builtLib.withInputStream { ins ->
