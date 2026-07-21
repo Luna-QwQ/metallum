@@ -293,7 +293,7 @@ public final class MetalNativeBridge {
     private static SymbolLookup createSymbolLookup() throws IOException {
         if (isIOS()) {
             // Try loading the embedded, signed dylib from the app bundle's
-            // Frameworks directory first (PojavLauncher supports this).
+            // Frameworks directory first (PojavLauncher/Amethyst supports this).
             try {
                 System.loadLibrary("metallum");
             } catch (UnsatisfiedLinkError ignoredFirst) {
@@ -310,9 +310,44 @@ public final class MetalNativeBridge {
             if (loader.find("metallum_create_system_default_device").isPresent()) {
                 return loader;
             }
-            // Last resort: extract from the jar (only works on developer devices
-            // where the dylib has been ad-hoc signed and embedded).
-            return extractFromResource(IOS_RESOURCE_PATH);
+            // Try dlopen from candidate Frameworks paths inside the app bundle.
+            // dlopen honors @executable_path / @loader_path tokens, which resolve
+            // to the directory containing the main executable (the app bundle root).
+            // The dylib must be signed with the app's signing identity for dlopen
+            // to succeed on iOS — this is the supported deployment path.
+            for (String candidate : new String[] {
+                    "@executable_path/Frameworks/libmetallum.dylib",
+                    "@loader_path/Frameworks/libmetallum.dylib",
+                    "@executable_path/Frameworks/libmetallum_native.dylib",
+                    "@loader_path/Frameworks/libmetallum_native.dylib"
+            }) {
+                try {
+                    SymbolLookup bundle = SymbolLookup.libraryLookup(candidate, Arena.global());
+                    if (bundle.find("metallum_create_system_default_device").isPresent()) {
+                        return bundle;
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // dlopen rejected this candidate; try the next.
+                }
+            }
+            // Last resort: extract from the jar. This only works on developer
+            // devices where unsigned dylibs can be loaded from writable tmp
+            // directories (e.g. ad-hoc signed via ldid and run with relaxed
+            // amfid). On a stock non-jailbroken device this will fail.
+            try {
+                return extractFromResource(IOS_RESOURCE_PATH);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException(
+                    "Could not load the Metallum native bridge on iOS.\n" +
+                    "The iOS dylib must be embedded in the launcher app bundle's\n" +
+                    "Frameworks/ directory and signed with the app's signing\n" +
+                    "identity. Extract natives/ios/libmetallum.dylib from the\n" +
+                    "Metallum jar, place it at\n" +
+                    "  <Amethyst.app>/Frameworks/libmetallum.dylib\n" +
+                    "and re-sign the app (e.g. via TrollStore or codesign).\n" +
+                    "See README.md -> iOS Installation for details.",
+                    e);
+            }
         }
         return extractFromResource(MACOS_RESOURCE_PATH);
     }

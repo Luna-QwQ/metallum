@@ -28,15 +28,22 @@ Metallum is packaged as a Fabric mod and is loaded automatically on Amethyst-iOS
 
 1. **Install Amethyst-iOS** on your device following the [official instructions](https://github.com/AngelAuraMC/Amethyst-iOS). The recommended approach is to use TrollStore for permanent signing and automatic JIT.
 
-2. **Download the latest Metallum jar** from the [Releases](https://github.com/Luna-QwQ/metallum/releases) page.
+2. **Embed the iOS dylib into the Amethyst app bundle.** This is required — iOS forbids loading unsigned dylibs from writable directories, so the dylib must live inside the app bundle's `Frameworks/` directory and be signed with the app's signing identity. The easiest way is to rebuild the Amethyst IPA with the dylib included:
+   - Extract `natives/ios/libmetallum.dylib` from the Metallum jar (any unzip tool will do).
+   - Place it at `Amethyst.app/Frameworks/libmetallum.dylib` inside the IPA.
+   - Re-sign the app. With TrollStore, simply re-import the modified IPA; TrollStore will re-sign it automatically. With AltStore/SideStore, rebuild and re-sign via your signing workflow.
 
-3. **Place the jar** in the `mods/` folder of your Minecraft instance on Amethyst-iOS (typically located at `~/Documents/minecraft/mods/` or accessible via the Amethyst file manager).
+3. **Download the latest Metallum jar** from the [Releases](https://github.com/Luna-QwQ/metallum/releases) page.
 
-4. **Launch Minecraft** through Amethyst-iOS. Metallum will automatically detect the Metal backend and use it instead of the default OpenGL/Vulkan renderer.
+4. **Place the jar** in the `mods/` folder of your Minecraft instance on Amethyst-iOS (typically located at `~/Documents/minecraft/mods/` or accessible via the Amethyst file manager).
+
+5. **Launch Minecraft** through Amethyst-iOS. Metallum will automatically detect the Metal backend and use it instead of the default OpenGL/Vulkan renderer.
 
 ### Notes
 
-- The iOS dylib is built with target `arm64-apple-ios14.0` and is **unsigned**. It must be loaded from within the Amethyst app bundle's `Frameworks/` directory, where it is signed with the application's signing identity. This is handled automatically by the Amethyst packaging process.
+- The iOS dylib is built with target `arm64-apple-ios14.0` and is **unsigned** in the jar. It must be re-signed as part of the Amethyst app bundle — iOS will refuse to `dlopen` it from any writable directory due to code-signing restrictions.
+- If you see a crash like `Cannot open library: .../tmp/metallum-native-*.dylib`, it means the dylib was not embedded in the app bundle's `Frameworks/` directory and the launcher tried to extract it to a writable tmp directory (which iOS rejects). Follow step 2 above to embed the dylib.
+- On developer devices with relaxed signing (e.g. jailbroken with `ldid` ad-hoc signing), the jar-extraction fallback may work without embedding — but this is not supported on stock iOS.
 - If you encounter crashes or rendering issues, try disabling other rendering-related mods first.
 - Metallum requires Fabric Loader; make sure your Amethyst instance is using Fabric.
 
