@@ -143,7 +143,7 @@ tasks.register("buildIOSSpvc") {
 
 		// 1. Clone SPIRV-Cross (shallow, specific tag)
 		if (!spvcSourceDir.exists()) {
-			exec {
+			project.exec {
 				commandLine "git", "clone", "--depth", "1", "--branch", spvcTag,
 					"https://github.com/KhronosGroup/SPIRV-Cross.git", spvcSourceDir.absolutePath
 			}
@@ -151,7 +151,7 @@ tasks.register("buildIOSSpvc") {
 
 		// 2. CMake configure + build
 		spvcBuildDir.mkdirs()
-		exec {
+		project.exec {
 			workingDir spvcBuildDir
 			commandLine "cmake",
 				"-DCMAKE_TOOLCHAIN_FILE=${spvcSourceDir.absolutePath}/cmake/toolchains/ios.cmake",
@@ -168,7 +168,7 @@ tasks.register("buildIOSSpvc") {
 				"-DCMAKE_BUILD_TYPE=Release",
 				spvcSourceDir.absolutePath
 		}
-		exec {
+		project.exec {
 			workingDir spvcBuildDir
 			commandLine "cmake", "--build", ".", "--config", "Release", "-j", "4"
 		}
