@@ -536,6 +536,14 @@ public func metallum_create_metal_layer(
     layer.framebufferOnly = true
     layer.isOpaque = true
     layer.contentsScale = CGFloat(contentsScale)
+    #if os(iOS)
+    // On iOS, the CAMetalLayer is added as a sublayer of the UIView's backing
+    // layer (see metallum_NSView_setMetalLayer). Sublayers do NOT auto-resize
+    // with their superlayer unless both `frame` and `autoresizingMask` are set.
+    // Without an explicit frame, the layer's bounds stay at .zero and nothing
+    // is visible — the screen appears black even though rendering succeeds.
+    // The frame will be synced to the view's bounds in metallum_NSView_setMetalLayer.
+    #endif
     return retainedPointer(layer)
 }
 
@@ -550,6 +558,12 @@ public func metallum_NSView_setMetalLayer(
     #elseif os(iOS)
     // UIView.layer is get-only; host the CAMetalLayer as a sublayer of
     // the view's existing backing layer instead of replacing it.
+    // Critical: set the frame to match the view's bounds, otherwise the
+    // sublayer has zero size and nothing is displayed (black screen).
+    layer.frame = view.bounds
+    // Keep the layer in sync with the view's bounds when the view resizes
+    // (e.g. device rotation, fullscreen transitions on PojavLauncher/Amethyst).
+    layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
     view.layer.sublayers = [layer]
     #endif
 }
@@ -1392,6 +1406,15 @@ public func metallum_configure_layer(_ layer: CAMetalLayer, _ width: Double, _ h
     layer.presentsWithTransaction = false
     #if os(macOS)
     layer.displaySyncEnabled = immediatePresentMode == 0
+    #elseif os(iOS)
+    // On iOS the CAMetalLayer is hosted as a sublayer (see
+    // metallum_NSView_setMetalLayer). The superlayer's bounds may have been
+    // .zero at attach time (view not yet laid out); sync the frame here so
+    // the layer covers the screen once configure(width, height) is called
+    // with the real surface dimensions.
+    if let superlayer = layer.superlayer {
+        layer.frame = superlayer.bounds
+    }
     #endif
 }
 
