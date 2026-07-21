@@ -561,9 +561,9 @@ public func metallum_NSView_setMetalLayer(
     // Critical: set the frame to match the view's bounds, otherwise the
     // sublayer has zero size and nothing is displayed (black screen).
     layer.frame = view.bounds
-    // Keep the layer in sync with the view's bounds when the view resizes
-    // (e.g. device rotation, fullscreen transitions on PojavLauncher/Amethyst).
-    layer.autoresizingMask = CAAutoresizingMask.layerWidthSizable.union(.layerHeightSizable)
+    // Note: CALayer.autoresizingMask is macOS-only; on iOS we rely on
+    // metallum_configure_layer to re-sync layer.frame from superlayer.bounds
+    // each time the surface is (re)configured with new dimensions.
     view.layer.sublayers = [layer]
     #endif
 }
