@@ -81,12 +81,28 @@ public class MetalBackend implements GpuBackend {
         if (scale <= 0.0) scale = 1.0;
 
 
-        metalLayer = MetalNativeBridge.metallum_create_metal_layer(deviceHandle, scale);
-        if (MetalNativeBridge.isNullHandle(metalLayer)) {
-            throw new BackendCreationException("Failed to create CAMetalLayer", BackendCreationException.Reason.OTHER);
-        }
+        if (MetalNativeBridge.isIOS()) {
+            // iOS: GameSurfaceView already overrides +layerClass to return
+            // CAMetalLayer.class, so cocoaView.layer IS a CAMetalLayer. Use it
+            // directly as the render target — this matches what Amethyst's own
+            // Vulkan path does in pojavCreateContext (Natives/egl_bridge.m:
+            // `return SurfaceViewController.surface.layer`). Creating a new
+            // CAMetalLayer and attaching it as a sublayer does NOT work
+            // reliably and results in a black screen with audio playing.
+            metalLayer = MetalNativeBridge.metallum_ios_get_view_metal_layer(cocoaView, deviceHandle, scale);
+            if (MetalNativeBridge.isNullHandle(metalLayer)) {
+                throw new BackendCreationException("metallum_ios_get_view_metal_layer returned null", BackendCreationException.Reason.OTHER);
+            }
+            // No metallum_NSView_setMetalLayer call needed — the layer is
+            // already view.layer and is attached to the view by the launcher.
+        } else {
+            metalLayer = MetalNativeBridge.metallum_create_metal_layer(deviceHandle, scale);
+            if (MetalNativeBridge.isNullHandle(metalLayer)) {
+                throw new BackendCreationException("Failed to create CAMetalLayer", BackendCreationException.Reason.OTHER);
+            }
 
-        MetalNativeBridge.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
+            MetalNativeBridge.metallum_NSView_setMetalLayer(cocoaView, metalLayer);
+        }
 
         Metallum.LOGGER.info("Metal device: {}", deviceName);
 

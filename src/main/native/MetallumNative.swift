@@ -536,16 +536,59 @@ public func metallum_create_metal_layer(
     layer.framebufferOnly = true
     layer.isOpaque = true
     layer.contentsScale = CGFloat(contentsScale)
-    #if os(iOS)
-    // On iOS, the CAMetalLayer is added as a sublayer of the UIView's backing
-    // layer (see metallum_NSView_setMetalLayer). Sublayers do NOT auto-resize
-    // with their superlayer unless both `frame` and `autoresizingMask` are set.
-    // Without an explicit frame, the layer's bounds stay at .zero and nothing
-    // is visible — the screen appears black even though rendering succeeds.
-    // The frame will be synced to the view's bounds in metallum_NSView_setMetalLayer.
-    #endif
     return retainedPointer(layer)
 }
+
+#if os(iOS)
+/// Returns the host launcher's existing CAMetalLayer for the given UIView.
+///
+/// On Amethyst / PojavLauncher_iOS, `GameSurfaceView` overrides `+layerClass`
+/// to return `CAMetalLayer.class`, so `view.layer` IS already a CAMetalLayer.
+/// Amethyst's own Vulkan path (`pojavCreateContext` in `egl_bridge.m`) returns
+/// `SurfaceViewController.surface.layer` directly to MoltenVK — it does NOT
+/// create a new CAMetalLayer or attach a sublayer. We must follow the same
+/// pattern: use `view.layer` itself as the render target.
+///
+/// Previously we created a new CAMetalLayer and added it as a sublayer of
+/// `view.layer`. That does NOT work reliably: CAMetalLayer has special
+/// compositing semantics, and a CAMetalLayer sublayer hosted inside another
+/// CAMetalLayer (the view's backing layer) is not guaranteed to be displayed.
+/// The result was a black screen with audio playing normally.
+///
+/// This function configures the existing layer's device (and a few other
+/// render-target properties) and returns an *unretained* pointer — the view
+/// owns the layer, so we must not retain it (would leak).
+@_cdecl("metallum_ios_get_view_metal_layer")
+public func metallum_ios_get_view_metal_layer(
+    _ view: UIView,
+    _ device: MTLDevice,
+    _ contentsScale: Double
+) -> UnsafeMutableRawPointer? {
+    guard let layer = view.layer as? CAMetalLayer else {
+        NSLog("[Metallum] view.layer is not a CAMetalLayer (got %@); falling back to sublayer attachment", String(describing: type(of: view.layer)))
+        // Fallback for launchers that do not override +layerClass. Create a
+        // new CAMetalLayer and add it as a sublayer, matching the macOS path.
+        let newLayer = CAMetalLayer()
+        newLayer.device = device
+        newLayer.framebufferOnly = true
+        newLayer.isOpaque = true
+        newLayer.contentsScale = CGFloat(contentsScale)
+        newLayer.frame = view.bounds
+        view.layer.sublayers = [newLayer]
+        return retainedPointer(newLayer)
+    }
+    NSLog("[Metallum] Using existing view.layer as CAMetalLayer (frame=%@, contentsScale=%f, drawsAsynchronously=%@)",
+          NSStringFromCGRect(layer.frame), layer.contentsScale, layer.drawsAsynchronously ? "YES" : "NO")
+    layer.device = device
+    layer.framebufferOnly = true
+    layer.isOpaque = true
+    // Do NOT override contentsScale: Amethyst sets it to
+    // screenScale * resolutionScale and re-syncs it on rotation; let the
+    // launcher own that property. The renderable size is governed by
+    // `drawableSize`, which we set in metallum_configure_layer.
+    return unretainedPointer(layer)
+}
+#endif
 
 @_cdecl("metallum_NSView_setMetalLayer")
 public func metallum_NSView_setMetalLayer(
@@ -556,15 +599,14 @@ public func metallum_NSView_setMetalLayer(
     view.wantsLayer = true
     view.layer = layer
     #elseif os(iOS)
-    // UIView.layer is get-only; host the CAMetalLayer as a sublayer of
-    // the view's existing backing layer instead of replacing it.
-    // Critical: set the frame to match the view's bounds, otherwise the
-    // sublayer has zero size and nothing is displayed (black screen).
-    layer.frame = view.bounds
-    // Note: CALayer.autoresizingMask is macOS-only; on iOS we rely on
-    // metallum_configure_layer to re-sync layer.frame from superlayer.bounds
-    // each time the surface is (re)configured with new dimensions.
-    view.layer.sublayers = [layer]
+    // On iOS the Java side uses metallum_ios_get_view_metal_layer, which
+    // returns view.layer directly (GameSurfaceView already overrides
+    // +layerClass to CAMetalLayer.class). This function is therefore a no-op
+    // on iOS — the layer is already attached to the view. We keep the symbol
+    // so the macOS/Java code path that calls it unconditionally does not
+    // need an #if guard.
+    _ = view
+    _ = layer
     #endif
 }
 
@@ -1407,14 +1449,16 @@ public func metallum_configure_layer(_ layer: CAMetalLayer, _ width: Double, _ h
     #if os(macOS)
     layer.displaySyncEnabled = immediatePresentMode == 0
     #elseif os(iOS)
-    // On iOS the CAMetalLayer is hosted as a sublayer (see
-    // metallum_NSView_setMetalLayer). The superlayer's bounds may have been
-    // .zero at attach time (view not yet laid out); sync the frame here so
-    // the layer covers the screen once configure(width, height) is called
-    // with the real surface dimensions.
-    if let superlayer = layer.superlayer {
-        layer.frame = superlayer.bounds
-    }
+    // The CAMetalLayer IS view.layer (see metallum_ios_get_view_metal_layer):
+    // the host UIView owns the layer's frame and updates it on layout /
+    // rotation. We must NOT touch layer.frame here — doing so would fight
+    // the view's layout pass and could leave the layer with the wrong frame.
+    // The renderable size is governed by `drawableSize` above, which is what
+    // Metal actually cares about.
+    //
+    // (The legacy sublayer fallback in metallum_ios_get_view_metal_layer sets
+    // newLayer.frame = view.bounds at attach time; we accept that it will not
+    // auto-resize if the view is later laid out larger.)
     #endif
 }
 

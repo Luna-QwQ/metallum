@@ -376,13 +376,22 @@ public final class MetalNativeBridge {
             MTLRenderCommandEncoderWaitForFence = downcallWithoutCritical(lookup, "MTLRenderCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
             MTLBlitCommandEncoderUpdateFence = downcall(lookup, "MTLBlitCommandEncoder_updateFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
             MTLBlitCommandEncoderWaitForFence = downcallWithoutCritical(lookup, "MTLBlitCommandEncoder_waitForFence", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-            // metallum_ios_find_surface_view only exists in the iOS build of
-            // the dylib (guarded by #if os(iOS) in Swift). Register it only on
-            // iOS so the macOS build does not fail with a missing symbol.
+            // metallum_ios_find_surface_view and metallum_ios_get_view_metal_layer
+            // only exist in the iOS build of the dylib (guarded by #if os(iOS)
+            // in Swift). Register them only on iOS so the macOS build does not
+            // fail with a missing symbol.
             if (isIOS() && lookup.find("metallum_ios_find_surface_view").isPresent()) {
                 iosFindSurfaceView = downcall(lookup, "metallum_ios_find_surface_view", FunctionDescriptor.of(ValueLayout.ADDRESS));
             } else {
                 iosFindSurfaceView = null;
+            }
+            if (isIOS() && lookup.find("metallum_ios_get_view_metal_layer").isPresent()) {
+                // Returns the host UIView's existing CAMetalLayer (view.layer),
+                // configured with the given device. See MetallumNative.swift for
+                // why we use view.layer directly instead of creating a sublayer.
+                iosGetViewMetalLayer = downcall(lookup, "metallum_ios_get_view_metal_layer", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, DOUBLE));
+            } else {
+                iosGetViewMetalLayer = null;
             }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load Metal native bridge", e);
@@ -590,6 +599,7 @@ public final class MetalNativeBridge {
     private static final MethodHandle MTLBlitCommandEncoderWaitForFence;
     private static final MethodHandle initPipelines;
     private static final MethodHandle iosFindSurfaceView; // null on macOS
+    private static final MethodHandle iosGetViewMetalLayer; // null on macOS
 
 
     private static MethodHandle downcall(final SymbolLookup lookup, final String symbol, final FunctionDescriptor descriptor) {
@@ -664,6 +674,28 @@ public final class MetalNativeBridge {
             return (MemorySegment) iosFindSurfaceView.invokeExact();
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_ios_find_surface_view", throwable);
+        }
+    }
+
+    /**
+     * On iOS, returns the host launcher's existing {@code CAMetalLayer} for the
+     * given {@code UIView} (i.e. {@code view.layer}), configured with the given
+     * Metal device. On Amethyst / PojavLauncher_iOS, {@code GameSurfaceView}
+     * overrides {@code +layerClass} to return {@code CAMetalLayer.class}, so
+     * {@code view.layer} IS already a {@code CAMetalLayer}. Using it directly
+     * matches what Amethyst's own Vulkan path does in {@code pojavCreateContext}
+     * (see {@code Natives/egl_bridge.m}).
+     *
+     * <p>Returns {@code null} on macOS or if the native symbol is unavailable.
+     */
+    public static MemorySegment metallum_ios_get_view_metal_layer(final MemorySegment view, final MemorySegment device, final double contentsScale) {
+        if (iosGetViewMetalLayer == null) {
+            return MemorySegment.NULL;
+        }
+        try {
+            return (MemorySegment) iosGetViewMetalLayer.invokeExact(segment(view), segment(device), contentsScale);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_ios_get_view_metal_layer", throwable);
         }
     }
 
