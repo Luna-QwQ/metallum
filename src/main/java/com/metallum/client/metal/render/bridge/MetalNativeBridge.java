@@ -99,9 +99,6 @@ public final class MetalNativeBridge {
             try {
                 configureBundledSpvcLibrary();
             } catch (Throwable t) {
-                // 记录但不抛出：即使配置失败，也允许后续代码尝试 LWJGL 默认加载
-                System.err.println("[MetalNativeBridge] Failed to configure bundled libspvc.dylib: " + t);
-                t.printStackTrace(System.err);
             } finally {
                 spvcConfigured = true;
             }
@@ -117,9 +114,6 @@ public final class MetalNativeBridge {
         String resourcePath = "/natives/ios/libspvc.dylib";
         try (InputStream stream = MetalNativeBridge.class.getResourceAsStream(resourcePath)) {
             if (stream == null) {
-                System.err.println("[MetalNativeBridge] libspvc.dylib not found in jar (" + resourcePath
-                        + "); falling back to LWJGL default. On iOS this likely means MoltenVK's "
-                        + "stripped SPIRV-Cross will be used (no MSL backend).");
                 return;
             }
             // 抽取到可写目录（与 createIOSSymbolLookup 相同的策略）
@@ -150,8 +144,6 @@ public final class MetalNativeBridge {
             // 让 LWJGL 在 Spvc 类初始化时用该绝对路径直接 dlopen，避免
             // dlsym(RTLD_DEFAULT) 被 MoltenVK 抢占
             Configuration.SPVC_LIBRARY_NAME.set(tempLib.toString());
-            System.out.println("[MetalNativeBridge] Configured Configuration.SPVC_LIBRARY_NAME="
-                    + tempLib + " (bundled libspvc.dylib with MSL backend)");
         }
     }
 

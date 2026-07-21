@@ -316,11 +316,7 @@ final class MetalCrossShaderCompiler {
                 );
             }
 
-            // 记录 SPIR-V magic 和版本，用于诊断字节序/版本问题
             int magic = spirvWords.get(0);
-            int version = spirvWords.get(1);
-            Metallum.LOGGER.debug("[MetalCross] SPIR-V: {} words, magic=0x{}, version=0x{}",
-                    wordCount, Integer.toHexString(magic), Integer.toHexString(version));
 
             PointerBuffer pContext = stack.mallocPointer(1);
             checkSpvc(Spvc.spvc_context_create(pContext), "spvc_context_create");

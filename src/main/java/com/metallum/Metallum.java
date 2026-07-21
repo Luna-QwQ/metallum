@@ -29,6 +29,5 @@ public class Metallum implements ModInitializer, PreLaunchEntrypoint {
 
     @Override
     public void onInitialize() {
-        LOGGER.info("Hello Fabric world!");
     }
 }
