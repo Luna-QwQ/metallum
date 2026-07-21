@@ -143,15 +143,15 @@ tasks.register("buildIOSSpvc") {
 
 		// Helper: run a command and throw on failure
 		def runCmd = { List<String> cmd, File workDir = null ->
-			logger.lifecycle("[buildIOSSpvc] $ ${cmd.join(' ')}")
+			logger.lifecycle("[buildIOSSpvc] Running: " + cmd.join(" "))
 			def pb = new ProcessBuilder(cmd)
 			if (workDir != null) pb.directory(workDir)
 			pb.redirectErrorStream(true)
 			def proc = pb.start()
-			proc.inputStream.eachLine { logger.lifecycle("[buildIOSSpvc] $it") }
+			proc.inputStream.eachLine { line -> logger.lifecycle("[buildIOSSpvc] " + line) }
 			def exitCode = proc.waitFor()
 			if (exitCode != 0) {
-				throw new GradleException("Command failed (exit $exitCode): ${cmd.join(' ')}")
+				throw new GradleException("Command failed (exit " + exitCode + "): " + cmd.join(" "))
 			}
 		}
 
