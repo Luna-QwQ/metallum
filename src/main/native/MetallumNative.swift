@@ -393,28 +393,45 @@ public func metallum_create_system_default_device() -> UnsafeMutableRawPointer? 
 /// `GameSurfaceView` instance backing the game. We resolve it via the ObjC
 /// runtime so Metallum (loaded as a separate dylib) does not need a compile-
 /// time dependency on the launcher's headers.
+///
+/// IMPORTANT: UIKit must be accessed from the main thread. The JVM's render
+/// thread is NOT the main thread, so this function dispatches the lookup to
+/// the main queue synchronously.
 @_cdecl("metallum_ios_find_surface_view")
 public func metallum_ios_find_surface_view() -> UnsafeMutableRawPointer? {
+    if Thread.isMainThread {
+        return findSurfaceViewOnMainThread()
+    }
+    // Dispatch to main thread synchronously. This is safe because
+    // createDevice() is called early during Minecraft init, before the
+    // render loop starts, so the main thread is not blocked on the render
+    // thread (no deadlock risk).
+    var result: UnsafeMutableRawPointer?
+    DispatchQueue.main.sync {
+        result = findSurfaceViewOnMainThread()
+    }
+    return result
+}
+
+private func findSurfaceViewOnMainThread() -> UnsafeMutableRawPointer? {
     // SurfaceViewController is an Amethyst/PojavLauncher class. Look it up
     // at runtime via the ObjC runtime; if Amethyst isn't the host (e.g. a
     // future launcher without this class), fall back to walking the key
     // window's view hierarchy for the largest subview.
-    if let cls = objc_getClass("SurfaceViewController") {
-        // +[SurfaceViewController surface]
-        let selector = sel_registerName("surface")
-        if let clsObj = cls as? AnyObject,
-           let view = clsObj.perform(selector)?.takeUnretainedValue() {
+    if let cls = objc_getClass("SurfaceViewController") as? NSObject.Type {
+        // +[SurfaceViewController surface] — calling perform on the class
+        // object (metatype) invokes the class method.
+        if let result = cls.perform(NSSelectorFromString("surface")) {
+            let view = result.takeUnretainedValue()
             return Unmanaged.passUnretained(view as AnyObject).toOpaque()
         }
     }
     // Fallback: the most deeply nested large UIView under the key window.
-    if let keyWindow = UIApplication.shared.connectedScenes
+    let windows = UIApplication.shared.connectedScenes
         .compactMap({ $0 as? UIWindowScene })
         .flatMap({ $0.windows })
-        .first(where: { $0.isKeyWindow }) ?? UIApplication.shared.connectedScenes
-        .compactMap({ $0 as? UIWindowScene })
-        .flatMap({ $0.windows }).first,
-       let root = keyWindow.rootViewController?.view {
+    let keyWindow = windows.first(where: { $0.isKeyWindow }) ?? windows.first
+    if let root = keyWindow?.rootViewController?.view {
         return findLargestSubview(root)
     }
     return nil
