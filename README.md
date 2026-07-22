@@ -62,7 +62,7 @@ GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构
 
 ### 注意事项
 
-- `libmetallum.dylib` 和 `libspvc.dylib` 由 Amethyst-iOS-MyRemastered 启动器在运行时加载，无需手动嵌入
+- `libmetallum.dylib` 和 `libspvc.dylib` 由启动器在运行时加载，无需手动嵌入
 - 必须使用 Fabric Loader
 - 如遇渲染问题，先尝试禁用其他渲染相关模组
 
