@@ -3,7 +3,7 @@
   "id": "metallum",
   "version": "${version}",
   "name": "Metallum",
-  "description": "This is an PoC Metal backend for Minecraft on macOS",
+  "description": "This is a PoC Metal backend for Minecraft on iOS and macOS.",
   "authors": [
     "kokodio",
     "EternityQwQ"
