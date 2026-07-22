@@ -59,7 +59,7 @@ GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构
 
 1. 在IOS系统上安装Minecraft Java Edition启动器
 2. 将 Metallum jar 放入 Minecraft 实例的 `mods/` 目录
-
+3. 启动 Minecraft，在视频设置中将图形后端选择为 "Prefer Metal"重启游戏即可生效
 ### 注意事项
 
 - `libmetallum.dylib` 和 `libspvc.dylib` 由启动器在运行时加载，无需手动嵌入
@@ -69,8 +69,8 @@ GitHub Actions 工作流（`.github/workflows/build.yml`）在 `macos-15` 上构
 ## macOS 使用说明
 
 1. 下载最新 Metallum jar 并放入 `mods/` 目录
-2. 启动 Minecraft，在视频设置中将图形后端选择为 "Prefer Metal"
-3. 需要与其他 Fabric 模组配合使用时，确保 Sodium 版本兼容（`mc26.2-0.9.0-fabric`）
+2. 启动 Minecraft，在视频设置中将图形后端选择为 "Prefer Metal"重启游戏即可生效
+
 
 ## 许可
 
