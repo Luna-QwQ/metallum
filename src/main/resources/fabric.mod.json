@@ -5,7 +5,8 @@
   "name": "Metallum",
   "description": "This is an PoC Metal backend for Minecraft on macOS",
   "authors": [
-    "kokodio"
+    "kokodio",
+    "EternityQwQ"
   ],
   "contact": {
     "homepage": "https://github.com/kokodio/metallum",
