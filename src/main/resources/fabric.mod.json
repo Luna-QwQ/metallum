@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "metallum",
   "version": "${version}",
-  "name": "Metallum",
+  "name": "MetalUniversal",
   "description": "This is a PoC Metal backend for Minecraft on iOS and macOS.",
   "authors": [
     "kokodio",
