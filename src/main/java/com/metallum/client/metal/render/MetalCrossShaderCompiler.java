@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Environment(EnvType.CLIENT)
-final class MetalCrossShaderCompiler {
+public final class MetalCrossShaderCompiler {
     private static final Set<String> BUILT_IN_UNIFORMS = Set.of("Projection", "Lighting", "Fog", "Globals");
     private static final int MSL_VERSION_4_0 = 0x040000;
     private static final Pattern VERTEX_ENTRY_PATTERN = Pattern.compile("\\bvertex\\s+\\w+\\s+(\\w+)\\s*\\(");
@@ -60,6 +60,34 @@ final class MetalCrossShaderCompiler {
     }
 
     private MetalCrossShaderCompiler() {
+    }
+
+    /**
+     * Compiles a raw GLSL source string to Metal Shading Language (MSL) via
+     * SPIR-V, using the same pipeline as vanilla shader compilation
+     * (GLSL → SPIR-V via {@link GlslCompiler}, then SPIR-V → MSL via
+     * SPIRV-Cross). This is the public entry point used by the Iris
+     * integration bridge to compile shaderpack GLSL to Metal.
+     *
+     * <p>Unlike {@link #compile}, this method does not require a
+     * {@link RenderPipeline} — it accepts arbitrary GLSL source, making it
+     * suitable for Iris's composite/shadow/gbuffer programs that live outside
+     * Minecraft's standard pipeline system.
+     *
+     * @param name        debug name for the shader (used in error messages)
+     * @param glslSource  the GLSL source code (already preprocessed & patched)
+     * @param type        the shader stage type (VERTEX, FRAGMENT, etc.)
+     * @return the compiled MSL shader source plus reflection metadata
+     * @throws ShaderCompileException if GLSL→SPIR-V or SPIR-V→MSL fails
+     */
+    public static MslShader compileGlslToMsl(final String name, final String glslSource, final ShaderType type) throws ShaderCompileException {
+        try (GlslCompiler glslCompiler = new GlslCompiler()) {
+            IntermediaryShaderModule spirv = glslCompiler.createIntermediary(name, glslSource, type);
+            if (spirv == IntermediaryShaderModule.INVALID) {
+                throw new ShaderCompileException("Failed to compile GLSL to SPIR-V for shader: " + name);
+            }
+            return spirvToMsl(spirv.spirv(), 0, Map.of());
+        }
     }
 
     static MetalCompiledRenderPipeline compile(final MetalDevice device, final RenderPipeline pipeline, final ShaderSource shaderSource) {
@@ -410,7 +438,7 @@ final class MetalCrossShaderCompiler {
         }
     }
 
-    record MslShader(String source, boolean hasPushConstants, Set<String> activeResources) {
+    public record MslShader(String source, boolean hasPushConstants, Set<String> activeResources) {
     }
 
     private static Set<String> collectActiveResourceNames(final MemoryStack stack, final long compiler, final long activeSet) throws ShaderCompileException {

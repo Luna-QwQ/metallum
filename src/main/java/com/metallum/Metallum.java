@@ -1,5 +1,6 @@
 package com.metallum;
 
+import com.metallum.client.metal.iris.MetalIrisBridge;
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
@@ -12,7 +13,7 @@ public class Metallum implements ModInitializer, PreLaunchEntrypoint {
 
     // This logger is used to write text to the console and the log file.
     // It is considered best practice to use your mod id as the logger's name.
-    // That way, it's clear which mod wrote info, warnings, and errors.
+    // That way, it's clear which mod wrote info, warnings, or errors.
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     @Override
@@ -29,5 +30,9 @@ public class Metallum implements ModInitializer, PreLaunchEntrypoint {
 
     @Override
     public void onInitialize() {
+        // Detect Iris and initialize the Metal↔Iris GLSL shader bridge.
+        // When Iris is present, MetalUniversal's GLSL→SPIR-V→MSL pipeline
+        // becomes available for compiling shaderpack shaders to Metal.
+        MetalIrisBridge.initialize();
     }
 }

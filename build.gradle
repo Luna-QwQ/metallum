@@ -12,13 +12,23 @@ loom {
 
 repositories {
 	maven { url "https://api.modrinth.com/maven" }
+	mavenCentral()
 }
 
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	
+
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "maven.modrinth:sodium:${project.sodium_version}"
+
+	// Iris is an optional compile-time dependency. MetalUniversal's
+	// MetalIrisBridge references Iris's ShaderType enum to map shader stages
+	// when compiling shaderpack GLSL to Metal. At runtime Iris is optional —
+	// the bridge detects its presence via FabricLoader and stays dormant if
+	// Iris is absent. The glsl-transformer / jcpp / antlr4-runtime libraries
+	// that Iris bundles are not required here because we only reference Iris's
+	// standalone ShaderType enum.
+	modCompileOnly "maven.modrinth:iris:${project.iris_version}"
 }
 
 processResources {
