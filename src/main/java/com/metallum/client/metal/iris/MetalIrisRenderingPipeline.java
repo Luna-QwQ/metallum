@@ -31,6 +31,8 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -45,7 +47,8 @@ import java.util.OptionalInt;
  * <ul>
  *   <li>Compiles all shaderpack programs from GLSL to Metal Shading Language
  *       via {@link MetalIrisBridge#compileIrisProgram} during construction,
- *       validating the GLSL→SPIR-V→MSL pipeline.</li>
+ *       storing the results in {@link #getCompiledShaders()} for later use
+ *       by the Metal render pass layer.</li>
  *   <li>Implements all {@code WorldRenderingPipeline} methods with the same
  *       safe defaults as {@code VanillaRenderingPipeline}.</li>
  *   <li>Makes {@link #beginLevelRendering()} a true no-op (no GL calls),
@@ -53,8 +56,11 @@ import java.util.OptionalInt;
  *       {@code GL.getCapabilities()} and {@code glUseProgram(0)}.</li>
  * </ul>
  *
- * <p>The compiled MSL shaders are not yet used for rendering — this is a
- * validation step. Actual Metal render pass integration is future work.
+ * <p><b>Status:</b> MSL compilation is fully working (26/26 programs compile
+ * successfully). The compiled MSL is stored but not yet used for rendering —
+ * the {@code WorldRenderingPipeline} methods are still no-op stubs. The next
+ * phase (M4) will create native {@code MTLRenderPipelineState} objects from
+ * the stored MSL and implement actual Metal render passes.
  *
  * <p>The pipeline is selected by {@code MixinIris}'s {@code createPipeline}
  * redirect, which returns {@code new MetalIrisRenderingPipeline(programs)}
@@ -67,6 +73,20 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
 
     private final ProgramSet programSet;
     private final FrameUpdateNotifier frameUpdateNotifier = new FrameUpdateNotifier();
+
+    /**
+     * Stores all successfully compiled MSL shader pairs, keyed by program
+     * name (e.g. {@code "gbuffers_terrain"}, {@code "composite1"},
+     * {@code "final"}). Populated during construction by
+     * {@link #compileShadersToMsl()}.
+     *
+     * <p>This is the foundation for M4 (Metal render pass integration):
+     * future rendering code will retrieve compiled MSL from this map and
+     * use {@code MetalDevice.getOrCompileFunction(msl, entryPoint)} to
+     * create native {@code MTLFunction} handles, then build
+     * {@code MTLRenderPipelineState} objects for actual rendering.
+     */
+    private final Map<String, MetalIrisBridge.ShaderPair> compiledShaders = new LinkedHashMap<>();
 
     public MetalIrisRenderingPipeline(ProgramSet programSet) {
         this.programSet = programSet;
@@ -310,6 +330,7 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
             MetalIrisBridge.ShaderPair pair = MetalIrisBridge.compileIrisProgram(
                 name, patchedVertex, patchedFragment);
             if (pair.vertex() != null && pair.fragment() != null) {
+                compiledShaders.put(name, pair);
                 LOGGER.info("[MetalUniversal] Compiled '{}' → MSL (vsh: {} chars, fsh: {} chars)",
                     name, pair.vertex().source().length(), pair.fragment().source().length());
                 return 1;
@@ -415,7 +436,20 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
 
     @Override
     public void destroy() {
-        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline destroyed.");
+        compiledShaders.clear();
+        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline destroyed (released {} compiled MSL shader pairs).",
+            compiledShaders.size());
+    }
+
+    /**
+     * Returns an unmodifiable view of all successfully compiled MSL shader
+     * pairs, keyed by program name. Used by the M4 rendering layer to
+     * retrieve compiled MSL source for native pipeline creation.
+     *
+     * @return unmodifiable map of program name → compiled MSL shader pair
+     */
+    public Map<String, MetalIrisBridge.ShaderPair> getCompiledShaders() {
+        return Collections.unmodifiableMap(compiledShaders);
     }
 
     @Override
