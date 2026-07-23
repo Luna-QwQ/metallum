@@ -222,7 +222,12 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         // The texture pointer array only needs to live for the duration of the
         // native call, so a confined arena closed immediately after is safe.
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment texArray = arena.allocateArray(ValueLayout.ADDRESS, (long) colorCount);
+            // allocateArray has no AddressLayout overload (only primitive
+            // layouts), so allocate a raw byte buffer sized for `colorCount`
+            // pointer-sized slots and write each handle via setAtIndex.
+            long slotSize = ValueLayout.ADDRESS.byteSize();
+            MemorySegment texArray = arena.allocate(
+                    slotSize * colorCount, ValueLayout.ADDRESS.byteAlignment());
             for (int i = 0; i < colorCount; i++) {
                 MemorySegment handle = colorTextureViews[i] == null
                         ? MemorySegment.NULL : colorTextureViews[i].nativeHandle();
