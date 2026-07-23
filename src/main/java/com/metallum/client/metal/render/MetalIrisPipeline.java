@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.foreign.MemorySegment;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -116,6 +118,23 @@ final class MetalIrisPipeline implements AutoCloseable {
             Pattern.compile("(\\w+)\\s*(?:\\[[^\\]]*\\]\\s*)*\\[\\[sampler\\((\\d+)\\)\\]\\]");
 
     /**
+     * Matches a vertex function {@code [[stage_in]]} parameter, capturing the
+     * struct type name (e.g. {@code main0_in}) and the parameter name
+     * (e.g. {@code in}). Used to reflect stage_in vertex attributes for
+     * fullscreen Iris passes.
+     */
+    private static final Pattern STAGE_IN_PARAM_PATTERN =
+            Pattern.compile("(\\w+)\\s+(\\w+)\\s*\\[\\[stage_in\\]\\]");
+
+    /**
+     * Matches an MSL struct member with an {@code [[attribute(N)]]} attribute,
+     * capturing the type name, member name, and attribute location. Used to
+     * reflect the vertex attributes of the stage_in struct.
+     */
+    private static final Pattern MSL_ATTRIBUTE_PATTERN =
+            Pattern.compile("(\\w+)\\s+(\\w+)\\s*\\[\\[attribute\\((\\d+)\\)\\]\\]");
+
+    /**
      * Kind of a reflected MSL resource binding (M5d-2). Mirrors the distinction
      * SPIRV-Cross makes when emitting MSL {@code [[buffer(N)]]} /
      * {@code [[texture(N)]]} / {@code [[sampler(N)]]} attributes.
@@ -136,6 +155,20 @@ final class MetalIrisPipeline implements AutoCloseable {
      * bindings (each bound with its own stage mask).
      */
     record IrisResourceBinding(IrisResourceKind kind, String name, int bindingIndex, int stageMask) {
+    }
+
+    /**
+     * A reflected MSL {@code [[stage_in]]} vertex attribute. Used to auto-build
+     * a {@link MTLVertexDescriptor} for fullscreen Iris passes (composite/
+     * deferred/final) whose vertex shaders declare vertex attribute inputs
+     * (e.g. {@code Position}, {@code UV0}) that Iris's {@code patchComposite}
+     * injects. Without a matching descriptor, Metal rejects the pipeline with
+     * {@code "Function requires stage_in attributes but no descriptor was set."}
+     *
+     * <p>{@code offset} is the byte offset within the packed vertex buffer
+     * (all attributes share buffer slot 0, packed contiguously by location).
+     */
+    record IrisVertexAttribute(String name, String typeName, int location, MTLVertexFormat format, long byteSize, long offset) {
     }
 
     private final String name;
@@ -179,6 +212,31 @@ final class MetalIrisPipeline implements AutoCloseable {
      * is enabled.
      */
     private final List<IrisResourceBinding> bindings;
+    /**
+     * Reflected {@code [[stage_in]]} vertex attributes for fullscreen passes
+     * (composite/deferred/final). Non-empty only when {@code vertexFormats}
+     * was {@code null} (fullscreen path) and the vertex MSL declares
+     * {@code [[stage_in]]} inputs. Consumed by {@code MetalIrisRenderer} to
+     * bind a fullscreen quad vertex buffer matching the descriptor.
+     */
+    private final List<IrisVertexAttribute> fullscreenAttributes;
+    /**
+     * Packed vertex stride (sum of all {@link #fullscreenAttributes} byte
+     * sizes). Zero when no stage_in attributes were reflected.
+     */
+    private final long fullscreenVertexStride;
+    /**
+     * The Metal buffer slot used by the auto-built fullscreen vertex
+     * descriptor layout (and where the renderer must bind the fullscreen quad
+     * vertex buffer). Computed as {@code maxVertexStageUboIndex + 1} so the
+     * quad buffer never collides with a vertex-stage UBO argument
+     * {@code [[buffer(N)]]} — Iris's {@code wrapLooseUniformsInUbo} injects a
+     * binding-less UBO that SPIRV-Cross assigns sequential indices from 0, so
+     * without this offset the quad buffer and the first UBO would share slot 0.
+     * Zero when there are no vertex-stage UBOs (slot 0 is then safe) or when
+     * no fullscreen descriptor is in use.
+     */
+    private final int fullscreenVertexBufferSlot;
     private boolean closed;
 
     /**
@@ -272,13 +330,38 @@ final class MetalIrisPipeline implements AutoCloseable {
         // pipelines, there are no vertex-stage UBOs reserved before the vertex
         // buffers. So firstAvailableVertexBufferSlot = 0.
         this.firstAvailableVertexBufferSlot = 0;
-        this.vertexBufferCount = countVertexBuffers(vertexFormats);
         this.bindings = reflectBindings(vertexMsl, fragmentMsl);
 
+        // Reflect [[stage_in]] vertex attributes for fullscreen passes
+        // (composite/deferred/final). Iris's patchComposite injects
+        // `in vec3 Position;` and `in vec2 UV0;` which SPIRV-Cross compiles
+        // to [[stage_in]] inputs with [[attribute(N)]] decorations. Without a
+        // matching vertex descriptor, Metal rejects the pipeline with
+        // "Function requires stage_in attributes but no descriptor was set."
+        // We auto-build a packed descriptor from the reflected attributes so
+        // fullscreen passes work without an explicit VertexFormat[].
+        final List<IrisVertexAttribute> reflectedAttrs = reflectStageInAttributes(vertexMsl);
+        final boolean useFullscreenDescriptor = vertexFormats == null && !reflectedAttrs.isEmpty();
+        this.fullscreenAttributes = useFullscreenDescriptor ? reflectedAttrs : List.of();
+        this.fullscreenVertexStride = useFullscreenDescriptor
+                ? reflectedAttrs.stream().mapToLong(IrisVertexAttribute::byteSize).sum()
+                : 0L;
+        this.vertexBufferCount = useFullscreenDescriptor ? 1 : countVertexBuffers(vertexFormats);
+        // Place the fullscreen quad vertex buffer AFTER any vertex-stage UBO
+        // so its buffer slot doesn't collide with a [[buffer(N)]] UBO argument.
+        // Iris's wrapLooseUniformsInUbo injects a binding-less UBO that
+        // SPIRV-Cross assigns [[buffer(0)]] — without this offset the quad
+        // buffer (slot 0) and the first UBO would share the same vertex-stage
+        // buffer table entry, causing the shader to read quad vertex bytes as
+        // uniform data.
+        this.fullscreenVertexBufferSlot = useFullscreenDescriptor
+                ? computeFullscreenVertexBufferSlot(this.bindings)
+                : 0;
+
         this.pipelineWithDepth = hasDepth
-                ? createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Depth32Float, vertexFormats, this.firstAvailableVertexBufferSlot)
+                ? createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Depth32Float, vertexFormats, this.firstAvailableVertexBufferSlot, this.fullscreenAttributes, this.fullscreenVertexBufferSlot)
                 : MemorySegment.NULL;
-        this.pipelineWithoutDepth = createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Invalid, vertexFormats, this.firstAvailableVertexBufferSlot);
+        this.pipelineWithoutDepth = createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Invalid, vertexFormats, this.firstAvailableVertexBufferSlot, this.fullscreenAttributes, this.fullscreenVertexBufferSlot);
 
         this.depthStencilState = hasDepth
                 ? MetalNativeBridge.MTLDevice_makeDepthStencilState(
@@ -296,15 +379,19 @@ final class MetalIrisPipeline implements AutoCloseable {
             final MTLPixelFormat[] colorFormats,
             final MTLPixelFormat depthFormat,
             final VertexFormat[] vertexFormats,
-            final int firstMetalVertexBufferSlot
+            final int firstMetalVertexBufferSlot,
+            final List<IrisVertexAttribute> fullscreenAttributes,
+            final int fullscreenVertexBufferSlot
     ) {
         try (MTLRenderPipelineDescriptor desc = new MTLRenderPipelineDescriptor()) {
             desc.setCompiledFunctions(vertexFn, fragmentFn);
             // Build the vertex descriptor: empty for fullscreen passes (no
             // vertex buffers — vertex_id generates positions), or a real
             // descriptor matching the terrain vertex format for gbuffers/
-            // shadow passes (M5a).
-            try (MTLVertexDescriptor vertexDesc = buildVertexDescriptor(vertexFormats, firstMetalVertexBufferSlot)) {
+            // shadow passes (M5a). For fullscreen passes whose vertex MSL
+            // declares [[stage_in]] inputs (composite/deferred/final), a
+            // packed descriptor is auto-built from reflected attributes.
+            try (MTLVertexDescriptor vertexDesc = buildVertexDescriptor(vertexFormats, firstMetalVertexBufferSlot, fullscreenAttributes, fullscreenVertexBufferSlot)) {
                 desc.setVertexDescriptor(vertexDesc);
             }
             // Attachment 0 + depth + stencil via the existing single call
@@ -345,6 +432,29 @@ final class MetalIrisPipeline implements AutoCloseable {
     }
 
     /**
+     * Computes the Metal buffer slot for the fullscreen quad vertex descriptor
+     * layout, placed strictly after the highest vertex-stage UBO binding index
+     * so the quad buffer never collides with a {@code [[buffer(N)]]} UBO
+     * argument. Mirrors {@code MetalCompiledRenderPipeline.firstAvailableVertexBufferSlot}
+     * — that method exists for the gbuffers path but the Iris fullscreen path
+     * needs its own because fullscreen pipelines don't go through
+     * {@code MetalRenderPass.bindDrawState}.
+     *
+     * <p>Returns 0 when there are no vertex-stage UBOs (slot 0 is then safe).
+     */
+    private static int computeFullscreenVertexBufferSlot(final List<IrisResourceBinding> bindings) {
+        int maxVertexUboIndex = -1;
+        for (final IrisResourceBinding b : bindings) {
+            if (b.kind() == IrisResourceKind.UNIFORM_BUFFER
+                    && (b.stageMask() & MetalCompiledRenderPipeline.STAGE_VERTEX) != 0
+                    && b.bindingIndex() > maxVertexUboIndex) {
+                maxVertexUboIndex = b.bindingIndex();
+            }
+        }
+        return maxVertexUboIndex + 1;
+    }
+
+    /**
      * Builds a {@link MTLVertexDescriptor} from the given vertex format
      * bindings (M5a). Mirrors the logic in
      * {@code MetalCompiledRenderPipeline.buildVertexDescriptor}:
@@ -362,10 +472,28 @@ final class MetalIrisPipeline implements AutoCloseable {
      */
     private static MTLVertexDescriptor buildVertexDescriptor(
             final VertexFormat[] vertexFormats,
-            final int firstMetalVertexBufferSlot
+            final int firstMetalVertexBufferSlot,
+            final List<IrisVertexAttribute> fullscreenAttributes,
+            final int fullscreenVertexBufferSlot
     ) {
         MTLVertexDescriptor vertexDesc = new MTLVertexDescriptor();
         if (vertexFormats == null) {
+            // Fullscreen pass: if the vertex MSL declares [[stage_in]] inputs
+            // (reflected as fullscreenAttributes), build a packed descriptor
+            // matching them so Metal doesn't reject the pipeline. All
+            // attributes share the computed buffer slot (placed after any
+            // vertex-stage UBOs to avoid collision), packed contiguously by
+            // location.
+            if (!fullscreenAttributes.isEmpty()) {
+                long stride = 0;
+                for (IrisVertexAttribute attr : fullscreenAttributes) {
+                    stride += attr.byteSize();
+                }
+                vertexDesc.setLayout(fullscreenVertexBufferSlot, stride, MTLVertexStepFunction.PerVertex, 1);
+                for (IrisVertexAttribute attr : fullscreenAttributes) {
+                    vertexDesc.setAttribute(attr.location(), attr.format().value, attr.offset(), fullscreenVertexBufferSlot);
+                }
+            }
             return vertexDesc;
         }
         long attrIndex = 0;
@@ -461,6 +589,103 @@ final class MetalIrisPipeline implements AutoCloseable {
         }
     }
 
+    /**
+     * Reflects {@code [[stage_in]]} vertex attributes from the compiled vertex
+     * MSL. SPIRV-Cross emits a struct (e.g. {@code main0_in}) whose members
+     * carry {@code [[attribute(N)]]} decorations, and the vertex function
+     * takes it as a {@code [[stage_in]]} parameter.
+     *
+     * <p>This is needed for fullscreen Iris passes (composite/deferred/final):
+     * Iris's {@code patchComposite} injects {@code in vec3 Position;} and
+     * {@code in vec2 UV0;} which become {@code [[stage_in]]} inputs in MSL.
+     * Metal requires a matching {@link MTLVertexDescriptor} or pipeline
+     * creation fails with {@code "Function requires stage_in attributes but
+     * no descriptor was set."}
+     *
+     * <p>The returned list is sorted by attribute location, with packed byte
+     * offsets assigned sequentially (all sharing buffer slot 0).
+     *
+     * @param vertexMsl the compiled vertex MSL source
+     * @return non-empty list of reflected attributes, or empty if the vertex
+     *         function has no {@code [[stage_in]]} parameter
+     */
+    private static List<IrisVertexAttribute> reflectStageInAttributes(final String vertexMsl) {
+        final Matcher stageInMatcher = STAGE_IN_PARAM_PATTERN.matcher(vertexMsl);
+        if (!stageInMatcher.find()) {
+            return List.of();
+        }
+        final String structType = stageInMatcher.group(1);
+
+        final Pattern structPattern = Pattern.compile(
+                "struct\\s+" + Pattern.quote(structType) + "\\s*\\{([^}]*)\\}");
+        final Matcher structMatcher = structPattern.matcher(vertexMsl);
+        if (!structMatcher.find()) {
+            return List.of();
+        }
+        final String body = structMatcher.group(1);
+
+        final List<IrisVertexAttribute> attrs = new ArrayList<>();
+        final Matcher attrMatcher = MSL_ATTRIBUTE_PATTERN.matcher(body);
+        while (attrMatcher.find()) {
+            final String typeName = attrMatcher.group(1);
+            final String name = attrMatcher.group(2);
+            final int location = Integer.parseInt(attrMatcher.group(3));
+            final MTLVertexFormat format = mslTypeToVertexFormat(typeName);
+            if (format == MTLVertexFormat.Invalid) {
+                LOGGER.warn("[MetalUniversal] Unmapped MSL stage_in type '{}' for attribute '{}' (location {}); skipping", typeName, name, location);
+                continue;
+            }
+            final long byteSize = mslTypeByteSize(typeName);
+            attrs.add(new IrisVertexAttribute(name, typeName, location, format, byteSize, 0));
+        }
+
+        if (attrs.isEmpty()) {
+            return List.of();
+        }
+        attrs.sort(Comparator.comparingInt(IrisVertexAttribute::location));
+        final List<IrisVertexAttribute> result = new ArrayList<>(attrs.size());
+        long offset = 0;
+        for (final IrisVertexAttribute a : attrs) {
+            result.add(new IrisVertexAttribute(a.name(), a.typeName(), a.location(), a.format(), a.byteSize(), offset));
+            offset += a.byteSize();
+        }
+        return List.copyOf(result);
+    }
+
+    private static MTLVertexFormat mslTypeToVertexFormat(final String typeName) {
+        return switch (typeName) {
+            case "float" -> MTLVertexFormat.Float;
+            case "float2" -> MTLVertexFormat.Float2;
+            case "float3" -> MTLVertexFormat.Float3;
+            case "float4" -> MTLVertexFormat.Float4;
+            case "half" -> MTLVertexFormat.Half;
+            case "half2" -> MTLVertexFormat.Half2;
+            case "half3" -> MTLVertexFormat.Half3;
+            case "half4" -> MTLVertexFormat.Half4;
+            case "int" -> MTLVertexFormat.Int;
+            case "int2" -> MTLVertexFormat.Int2;
+            case "int3" -> MTLVertexFormat.Int3;
+            case "int4" -> MTLVertexFormat.Int4;
+            case "uint" -> MTLVertexFormat.UInt;
+            case "uint2" -> MTLVertexFormat.UInt2;
+            case "uint3" -> MTLVertexFormat.UInt3;
+            case "uint4" -> MTLVertexFormat.UInt4;
+            default -> MTLVertexFormat.Invalid;
+        };
+    }
+
+    private static long mslTypeByteSize(final String typeName) {
+        final long perComponent = typeName.startsWith("half") ? 2L : 4L;
+        final int components = switch (typeName) {
+            case "float", "half", "int", "uint" -> 1;
+            case "float2", "half2", "int2", "uint2" -> 2;
+            case "float3", "half3", "int3", "uint3" -> 3;
+            case "float4", "half4", "int4", "uint4" -> 4;
+            default -> 0;
+        };
+        return perComponent * components;
+    }
+
     String name() {
         return name;
     }
@@ -542,6 +767,42 @@ final class MetalIrisPipeline implements AutoCloseable {
      */
     List<IrisResourceBinding> bindings() {
         return this.bindings;
+    }
+
+    /**
+     * Returns the reflected {@code [[stage_in]]} vertex attributes for this
+     * pipeline. Non-empty only for fullscreen passes (composite/deferred/final)
+     * whose vertex MSL declares {@code [[stage_in]]} inputs. The renderer binds
+     * a fullscreen quad vertex buffer matching these attributes.
+     */
+    List<IrisVertexAttribute> fullscreenAttributes() {
+        return this.fullscreenAttributes;
+    }
+
+    /**
+     * Returns the packed vertex stride (bytes) for the fullscreen quad buffer.
+     * Zero when no stage_in attributes were reflected.
+     */
+    long fullscreenVertexStride() {
+        return this.fullscreenVertexStride;
+    }
+
+    /**
+     * Returns the Metal buffer slot where the renderer must bind the fullscreen
+     * quad vertex buffer. Computed as {@code maxVertexStageUboIndex + 1} so it
+     * never collides with a vertex-stage UBO {@code [[buffer(N)]]} argument.
+     */
+    int fullscreenVertexBufferSlot() {
+        return this.fullscreenVertexBufferSlot;
+    }
+
+    /**
+     * Returns {@code true} if this pipeline has reflected {@code [[stage_in]]}
+     * vertex attributes (i.e. the renderer must bind a fullscreen quad vertex
+     * buffer before drawing).
+     */
+    boolean hasStageInAttributes() {
+        return !this.fullscreenAttributes.isEmpty();
     }
 
     @Override

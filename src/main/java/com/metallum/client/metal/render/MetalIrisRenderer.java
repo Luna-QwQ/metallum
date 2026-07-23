@@ -1,6 +1,8 @@
 package com.metallum.client.metal.render;
 
 import com.metallum.client.metal.render.bridge.MetalNativeBridge;
+import com.metallum.client.metal.render.mtl.MTLHazardTrackingMode;
+import com.metallum.client.metal.render.mtl.MTLIndexType;
 import com.metallum.client.metal.render.mtl.MTLPixelFormat;
 import com.metallum.client.metal.render.mtl.MTLPrimitiveType;
 import com.metallum.client.metal.render.mtl.MTLRenderCommandEncoder;
@@ -8,6 +10,7 @@ import com.metallum.client.metal.render.mtl.MTLRenderStages;
 import com.metallum.client.metal.render.mtl.MTLSamplerAddressMode;
 import com.metallum.client.metal.render.mtl.MTLSamplerMinMagFilter;
 import com.metallum.client.metal.render.mtl.MTLSamplerMipFilter;
+import com.metallum.client.metal.render.mtl.MTLResourceOptions;
 import com.metallum.client.metal.render.mtl.MTLStorageMode;
 import com.metallum.client.metal.render.mtl.MTLTextureUsage;
 import com.metallum.mixin.accessor.MetallumGpuDeviceAccessor;
@@ -20,8 +23,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.foreign.MemorySegment;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -117,6 +123,37 @@ public final class MetalIrisRenderer {
      * lazily, reused across frames (like {@link #dummyTextureHandle}).
      */
     private static MemorySegment dummySamplerHandle = MemorySegment.NULL;
+
+    /**
+     * Cached fullscreen quad vertex buffer (M5d-2 fix). Bound to vertex slot 0
+     * for fullscreen Iris passes (composite/deferred/final) whose vertex MSL
+     * declares {@code [[stage_in]]} inputs ({@code Position}, {@code UV0}).
+     * Iris's {@code patchComposite} injects these attributes, so the pipeline
+     * requires a matching vertex buffer or pipeline creation fails with
+     * {@code "Function requires stage_in attributes but no descriptor was set."}
+     *
+     * <p>The buffer holds 4 vertices forming a fullscreen quad in NDC space
+     * (-1..1), packed according to the reflected attribute layout. It is
+     * rebuilt only if a different pipeline's reflected stride differs from
+     * {@link #fullscreenQuadStride}; in practice all fullscreen Iris passes
+     * share the same {@code (vec3 Position, vec2 UV0)} layout, so the buffer
+     * is created once and reused across passes.
+     */
+    private static MemorySegment fullscreenQuadBuffer = MemorySegment.NULL;
+
+    /**
+     * Cached fullscreen quad index buffer (6 UInt16 indices for 2 triangles).
+     * Bound alongside {@link #fullscreenQuadBuffer} when issuing indexed draws.
+     */
+    private static MemorySegment fullscreenQuadIndexBuffer = MemorySegment.NULL;
+
+    /**
+     * The vertex stride (bytes) the cached {@link #fullscreenQuadBuffer} was
+     * built for. Zero means no buffer has been created yet. When a pipeline's
+     * {@link MetalIrisPipeline#fullscreenVertexStride()} differs, the buffer
+     * is released and rebuilt.
+     */
+    private static long fullscreenQuadStride = 0L;
 
     /**
      * The active Iris gbuffers program name for the current rendering phase
@@ -342,6 +379,213 @@ public final class MetalIrisRenderer {
     }
 
     /**
+     * Ensures the cached fullscreen quad vertex + index buffers exist and
+     * match the given pipeline's reflected {@code [[stage_in]]} attribute
+     * layout. Called by {@link #renderFullscreenPass} /
+     * {@link #renderFullscreenPassMulti} before issuing an indexed draw when
+     * {@link MetalIrisPipeline#hasStageInAttributes()} is true.
+     *
+     * <p>The quad uses 4 vertices in NDC space covering the screen:
+     * <pre>
+     *   vertex 0: Position=(-1,-1,0)  UV0=(0,0)
+     *   vertex 1: Position=( 1,-1,0)  UV0=(1,0)
+     *   vertex 2: Position=( 1, 1,0)  UV0=(1,1)
+     *   vertex 3: Position=(-1, 1,0)  UV0=(0,1)
+     * </pre>
+     * drawn as 2 triangles via 6 UInt16 indices: {@code 0,1,2, 0,2,3}.
+     *
+     * <p>Vertex data is packed contiguously by attribute location (matching
+     * {@link MetalIrisPipeline#fullscreenAttributes()}). Attributes named
+     * {@code Position} get the NDC coordinates above; attributes named
+     * {@code UV0} get the UV coordinates above; any other attribute is
+     * filled with zeros (safe default for unused inputs).
+     *
+     * @return {@code true} if the buffers are ready to bind; {@code false} on
+     *         allocation failure (caller should fall back to drawPrimitives)
+     */
+    private static boolean ensureFullscreenQuadBuffer(
+            final MetalDevice device,
+            final MetalIrisPipeline pipeline
+    ) {
+        final List<MetalIrisPipeline.IrisVertexAttribute> attrs = pipeline.fullscreenAttributes();
+        final long stride = pipeline.fullscreenVertexStride();
+        if (attrs.isEmpty() || stride <= 0L) {
+            return false;
+        }
+
+        // Fast path: cached buffer already matches this layout.
+        if (!MetalNativeBridge.isNullHandle(fullscreenQuadBuffer)
+                && !MetalNativeBridge.isNullHandle(fullscreenQuadIndexBuffer)
+                && fullscreenQuadStride == stride) {
+            return true;
+        }
+
+        // Layout changed (or first creation): release any stale buffers.
+        releaseFullscreenQuadBuffer();
+
+        final int vertexCount = 4;
+        final long vertexDataSize = stride * vertexCount;
+        // Shared storage (CPU-accessible) so we can memcpy the quad data in.
+        final long resourceOptions = MTLResourceOptions.of(MTLStorageMode.Shared, MTLHazardTrackingMode.Untracked);
+
+        final MemorySegment vbuf = MetalNativeBridge.metallum_create_buffer(
+                device.metalDeviceHandle(), vertexDataSize, resourceOptions);
+        if (MetalNativeBridge.isNullHandle(vbuf)) {
+            LOGGER.warn("[MetalUniversal] Failed to create fullscreen quad vertex buffer (stride={}, size={})", stride, vertexDataSize);
+            return false;
+        }
+        final MemorySegment vbufContents = MetalNativeBridge.metallum_get_buffer_contents(vbuf);
+        if (MetalNativeBridge.isNullHandle(vbufContents)) {
+            MetalNativeBridge.metallum_release_object(vbuf);
+            LOGGER.warn("[MetalUniversal] Failed to map fullscreen quad vertex buffer contents");
+            return false;
+        }
+
+        // NDC quad positions and UVs (per vertex 0..3 above).
+        final float[] positions = {
+                -1.0f, -1.0f, 0.0f,
+                1.0f, -1.0f, 0.0f,
+                1.0f, 1.0f, 0.0f,
+                -1.0f, 1.0f, 0.0f
+        };
+        final float[] uvs = {
+                0.0f, 0.0f,
+                1.0f, 0.0f,
+                1.0f, 1.0f,
+                0.0f, 1.0f
+        };
+
+        final ByteBuffer vbufView = MetalNativeBridge.nativeByteBufferView(vbufContents, vertexDataSize)
+                .order(ByteOrder.nativeOrder());
+        for (int v = 0; v < vertexCount; v++) {
+            for (final MetalIrisPipeline.IrisVertexAttribute attr : attrs) {
+                final String name = attr.name();
+                final String type = attr.typeName();
+                if ("Position".equals(name)) {
+                    putFloats(vbufView, type, positions, v * 3);
+                } else if ("UV0".equals(name)) {
+                    putFloats(vbufView, type, uvs, v * 2);
+                } else {
+                    // Unknown stage_in attribute: zero-fill its byte size so the
+                    // descriptor layout stays valid (Metal still reads it).
+                    for (long b = 0; b < attr.byteSize(); b++) {
+                        vbufView.put((byte) 0);
+                    }
+                }
+            }
+        }
+        vbufView.flip();
+
+        // Index buffer: 6 UInt16 indices for two triangles.
+        final long indexDataSize = 6L * MTLIndexType.UInt16.bytes;
+        final MemorySegment ibuf = MetalNativeBridge.metallum_create_buffer(
+                device.metalDeviceHandle(), indexDataSize, resourceOptions);
+        if (MetalNativeBridge.isNullHandle(ibuf)) {
+            MetalNativeBridge.metallum_release_object(vbuf);
+            LOGGER.warn("[MetalUniversal] Failed to create fullscreen quad index buffer");
+            return false;
+        }
+        final MemorySegment ibufContents = MetalNativeBridge.metallum_get_buffer_contents(ibuf);
+        if (MetalNativeBridge.isNullHandle(ibufContents)) {
+            MetalNativeBridge.metallum_release_object(vbuf);
+            MetalNativeBridge.metallum_release_object(ibuf);
+            LOGGER.warn("[MetalUniversal] Failed to map fullscreen quad index buffer contents");
+            return false;
+        }
+        final ByteBuffer ibufView = MetalNativeBridge.nativeByteBufferView(ibufContents, indexDataSize)
+                .order(ByteOrder.nativeOrder()); // UInt16 indices in platform native order
+        ibufView.putShort((short) 0);
+        ibufView.putShort((short) 1);
+        ibufView.putShort((short) 2);
+        ibufView.putShort((short) 0);
+        ibufView.putShort((short) 2);
+        ibufView.putShort((short) 3);
+        ibufView.flip();
+
+        fullscreenQuadBuffer = vbuf;
+        fullscreenQuadIndexBuffer = ibuf;
+        fullscreenQuadStride = stride;
+        LOGGER.info("[MetalUniversal] Created fullscreen quad buffers (stride={}, vertices={}, indices=6, attrs={})",
+                stride, vertexCount, attrs.size());
+        return true;
+    }
+
+    /**
+     * Writes a vertex attribute value into {@code buf} as floats, sized to the
+     * MSL type. {@code float3} writes 3 floats, {@code half2} writes 2 shorts
+     * (converted from float), etc. Used by {@link #ensureFullscreenQuadBuffer}
+     * to pack the quad's {@code Position}/{@code UV0} data per attribute.
+     *
+     * @param buf        the vertex buffer byte view, positioned at the attribute
+     * @param typeName   the MSL type name (e.g. {@code float3}, {@code half2})
+     * @param values     the float source array (positions or UVs)
+     * @param offset     the starting index in {@code values} for this vertex
+     */
+    private static void putFloats(final ByteBuffer buf, final String typeName, final float[] values, final int offset) {
+        final boolean isHalf = typeName.startsWith("half");
+        final int components = switch (typeName) {
+            case "float", "half", "int", "uint" -> 1;
+            case "float2", "half2", "int2", "uint2" -> 2;
+            case "float3", "half3", "int3", "uint3" -> 3;
+            case "float4", "half4", "int4", "uint4" -> 4;
+            default -> 0;
+        };
+        for (int c = 0; c < components; c++) {
+            final float v = (offset + c < values.length) ? values[offset + c] : 0.0f;
+            if (isHalf) {
+                buf.putShort(floatToHalf(v));
+            } else {
+                buf.putFloat(v);
+            }
+        }
+    }
+
+    /**
+     * Converts an IEEE-754 {@code float} to an IEEE-754 {@code half} (binary16)
+     * bit pattern stored in a {@code short}. Used by {@link #putFloats} when a
+     * reflected stage_in attribute uses an MSL {@code halfN} type.
+     *
+     * <p>Handles zero, denormals (flushed to zero), normal range, overflow
+     * (clamped to ±Inf), and Inf/NaN.
+     */
+    private static short floatToHalf(final float f) {
+        final int bits = Float.floatToIntBits(f);
+        final int sign = (bits >>> 16) & 0x8000;
+        final int exponent = (bits >>> 23) & 0xff;
+        final int mantissa = bits & 0x7fffff;
+        if (exponent == 0xff) {
+            // Inf or NaN
+            return (short) (sign | 0x7c00 | (mantissa != 0 ? 1 : 0));
+        }
+        if (exponent < 113) {
+            // Too small for half (denormal or zero) → flush to zero with sign
+            return (short) sign;
+        }
+        if (exponent > 142) {
+            // Overflow → Inf with sign
+            return (short) (sign | 0x7c00);
+        }
+        final int newExponent = exponent - 112;
+        return (short) (sign | (newExponent << 10) | (mantissa >> 13));
+    }
+
+    /**
+     * Releases the cached fullscreen quad buffers (vertex + index). Called on
+     * layout change and from {@link #clearCache}.
+     */
+    private static void releaseFullscreenQuadBuffer() {
+        if (!MetalNativeBridge.isNullHandle(fullscreenQuadBuffer)) {
+            MetalNativeBridge.metallum_release_object(fullscreenQuadBuffer);
+            fullscreenQuadBuffer = MemorySegment.NULL;
+        }
+        if (!MetalNativeBridge.isNullHandle(fullscreenQuadIndexBuffer)) {
+            MetalNativeBridge.metallum_release_object(fullscreenQuadIndexBuffer);
+            fullscreenQuadIndexBuffer = MemorySegment.NULL;
+        }
+        fullscreenQuadStride = 0L;
+    }
+
+    /**
      * Renders a fullscreen triangle using the given Iris pipeline to the given
      * color attachment.
      *
@@ -390,9 +634,20 @@ public final class MetalIrisRenderer {
             // low slots, dummy texture to the rest.
             bindSamplerTextures(renderEnc, device, readViews, readCount);
 
-            // Draw a fullscreen triangle: 3 vertices, 1 instance.
-            // The vertex shader generates positions from vertex_id.
-            renderEnc.drawPrimitives(MTLPrimitiveType.Triangle, 0, 3, 1, 0);
+            // If the vertex MSL declares [[stage_in]] inputs (Iris's
+            // patchComposite injects `in vec3 Position; in vec2 UV0;`), bind
+            // a fullscreen quad vertex buffer + index buffer and issue an
+            // indexed draw. Otherwise fall back to the vertex_id-generated
+            // fullscreen triangle (3 vertices, no buffers).
+            if (pipeline.hasStageInAttributes() && ensureFullscreenQuadBuffer(device, pipeline)) {
+                renderEnc.setBuffer(fullscreenQuadBuffer, 0L, pipeline.fullscreenVertexBufferSlot(), STAGE_VERTEX);
+                renderEnc.drawIndexedPrimitives(
+                        MTLPrimitiveType.Triangle,
+                        6, MTLIndexType.UInt16, fullscreenQuadIndexBuffer, 0L,
+                        1, 0, 0);
+            } else {
+                renderEnc.drawPrimitives(MTLPrimitiveType.Triangle, 0, 3, 1, 0);
+            }
 
             // Do NOT call endEncoding — MetalCommandEncoder tracks the active
             // encoder and will end it when a new encoder is needed or when
@@ -766,7 +1021,19 @@ public final class MetalIrisRenderer {
             // low slots, dummy texture to the rest.
             bindSamplerTextures(renderEnc, device, readViews, readCount);
 
-            renderEnc.drawPrimitives(MTLPrimitiveType.Triangle, 0, 3, 1, 0);
+            // If the vertex MSL declares [[stage_in]] inputs (composite/deferred
+            // passes patched by Iris's patchComposite), bind the fullscreen quad
+            // vertex + index buffers and issue an indexed draw. Otherwise fall
+            // back to the vertex_id-generated fullscreen triangle.
+            if (pipeline.hasStageInAttributes() && ensureFullscreenQuadBuffer(device, pipeline)) {
+                renderEnc.setBuffer(fullscreenQuadBuffer, 0L, pipeline.fullscreenVertexBufferSlot(), STAGE_VERTEX);
+                renderEnc.drawIndexedPrimitives(
+                        MTLPrimitiveType.Triangle,
+                        6, MTLIndexType.UInt16, fullscreenQuadIndexBuffer, 0L,
+                        1, 0, 0);
+            } else {
+                renderEnc.drawPrimitives(MTLPrimitiveType.Triangle, 0, 3, 1, 0);
+            }
 
             LOGGER.info("[MetalUniversal] Rendered MRT pass '{}' ({} attachments, {}x{})",
                     pipeline.name(), colorCount, width, height);
@@ -1249,6 +1516,7 @@ public final class MetalIrisRenderer {
         releaseCompositeTargets();
         releaseGbufferTargets();
         releaseShadowTarget();
+        releaseFullscreenQuadBuffer();
         // The pipeline cache is now empty, so any active gbuffers program /
         // swap flag would reference stale state. Clear both (M5d-1).
         activeGbuffersProgram = null;
