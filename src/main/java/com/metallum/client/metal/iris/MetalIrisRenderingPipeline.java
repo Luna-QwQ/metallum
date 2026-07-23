@@ -438,11 +438,27 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
     @Override
     public void setPhase(WorldRenderingPhase phase) {
         currentPhase = phase;
+        // M5c: Push the resolved gbuffers program name to MetalIrisRenderer so
+        // MetalCommandEncoder.createRenderPass can redirect the render target.
+        updateActiveGbuffersProgram();
     }
 
     @Override
     public void setOverridePhase(WorldRenderingPhase phase) {
         overridePhase = (phase == WorldRenderingPhase.NONE) ? null : phase;
+        updateActiveGbuffersProgram();
+    }
+
+    /**
+     * Resolves the effective phase to a gbuffers program name and pushes it to
+     * {@link MetalIrisRenderer#setActiveGbuffersProgram} (M5c). Called whenever
+     * the phase or override changes.
+     */
+    private void updateActiveGbuffersProgram() {
+        WorldRenderingPhase phase = getEffectivePhase();
+        String preferred = phaseToGbuffersProgram(phase);
+        String resolved = resolveGbuffersProgram(preferred);
+        MetalIrisRenderer.setActiveGbuffersProgram(resolved);
     }
 
     @Override
@@ -699,6 +715,7 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
             activeInstance = null;
             currentPhase = WorldRenderingPhase.NONE;
             overridePhase = null;
+            MetalIrisRenderer.setActiveGbuffersProgram(null);
         }
         LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline destroyed (released compiled MSL shader pairs).");
     }

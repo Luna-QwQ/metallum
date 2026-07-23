@@ -286,12 +286,34 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
 
         assert descriptor.renderArea != null;
         RenderPass.RenderArea renderArea = descriptor.renderArea;
+
+        // M5c: Iris gbuffer render-target redirect. When an Iris gbuffers phase
+        // is active (set by MetalIrisRenderingPipeline.setPhase), swap the
+        // render target from the screen to the gbuffer MRT pool so vanilla
+        // scene draws render into colortex0 + depth instead of the screen.
+        // The composite/final passes then sample the gbuffer.
+        //
+        // This is the render-target half of the redirect. The pipeline swap
+        // (using the Iris gbuffers shader instead of vanilla's) is a separate
+        // step (M5d) — for now, vanilla's shader runs into the gbuffer.
+        GpuTextureView effectiveColor = colorTexture;
+        GpuTextureView effectiveDepth = depthTexture;
+        String gbuffersProgram = MetalIrisRenderer.getActiveGbuffersProgram();
+        if (gbuffersProgram != null) {
+            MetalGpuTextureView[] gbufferColors = MetalIrisRenderer.getGbufferColorViews();
+            MetalGpuTextureView gbufferDepth = MetalIrisRenderer.getGbufferDepthView();
+            if (gbufferColors != null && gbufferColors.length > 0 && gbufferColors[0] != null && gbufferDepth != null) {
+                effectiveColor = gbufferColors[0];
+                effectiveDepth = gbufferDepth;
+            }
+        }
+
         MetalRenderPass renderPass = new MetalRenderPass(
                 device,
                 this,
                 descriptor.label(),
-                colorTexture,
-                depthTexture,
+                effectiveColor,
+                effectiveDepth,
                 renderArea,
                 colorClear.orElse(null),
                 depthClear.isPresent(),

@@ -108,6 +108,39 @@ public final class MetalIrisRenderer {
     private static MemorySegment dummyTextureHandle = MemorySegment.NULL;
 
     /**
+     * The active Iris gbuffers program name for the current rendering phase
+     * (M5c). Set by {@link com.metallum.client.metal.iris.MetalIrisRenderingPipeline#setPhase}
+     * / {@code setOverridePhase} (which resolve the phase → program name), read
+     * by {@link MetalCommandEncoder#createRenderPass} to decide whether to
+     * redirect the render target to the gbuffer MRT pool.
+     *
+     * <p>{@code null} means no gbuffers phase is active (e.g. {@code NONE},
+     * {@code PARTICLES}, {@code CLOUDS}, ...) — vanilla render passes target
+     * the screen as normal.
+     */
+    private static volatile String activeGbuffersProgram = null;
+
+    /**
+     * Sets the active gbuffers program name (M5c). Called by
+     * {@link MetalIrisRenderingPipeline} when the phase changes. Pass
+     * {@code null} to clear (no gbuffers redirect).
+     */
+    public static void setActiveGbuffersProgram(final String name) {
+        activeGbuffersProgram = name;
+    }
+
+    /**
+     * Returns the active gbuffers program name, or {@code null} if no
+     * gbuffers phase is active (M5c). When non-null,
+     * {@link MetalCommandEncoder#createRenderPass} redirects the render target
+     * to the gbuffer MRT pool so vanilla scene draws render into the gbuffer
+     * instead of the screen.
+     */
+    public static String getActiveGbuffersProgram() {
+        return activeGbuffersProgram;
+    }
+
+    /**
      * The final-pass render target view produced by {@link #renderFinalPass},
      * handed off to {@link MetalSurface#blitFromTexture} for presentation.
      *
