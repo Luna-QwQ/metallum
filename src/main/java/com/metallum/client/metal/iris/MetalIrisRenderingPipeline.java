@@ -89,8 +89,26 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
      */
     private final Map<String, MetalIrisBridge.ShaderPair> compiledShaders = new LinkedHashMap<>();
 
+    // ---- Phase tracking (M5b) ----
+
+    /**
+     * The current Iris rendering phase (M5b). Set by {@link #setPhase} and
+     * {@link #setOverridePhase} (the latter takes precedence when non-null).
+     * Drives which gbuffers program the draw-path mixin (M5c) should
+     * substitute for the vanilla pipeline.
+     */
+    private static volatile WorldRenderingPhase currentPhase = WorldRenderingPhase.NONE;
+    private static volatile WorldRenderingPhase overridePhase = null;
+
+    /**
+     * The pipeline instance, set in the constructor so static phase methods
+     * can access the compiled shader map for program-name lookup.
+     */
+    private static volatile MetalIrisRenderingPipeline activeInstance = null;
+
     public MetalIrisRenderingPipeline(ProgramSet programSet) {
         this.programSet = programSet;
+        activeInstance = this;
 
         WorldRenderingSettings.INSTANCE.setDisableDirectionalShading(false);
         WorldRenderingSettings.INSTANCE.setUseSeparateAo(false);
@@ -414,15 +432,17 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
 
     @Override
     public WorldRenderingPhase getPhase() {
-        return WorldRenderingPhase.NONE;
+        return currentPhase;
     }
 
     @Override
     public void setPhase(WorldRenderingPhase phase) {
+        currentPhase = phase;
     }
 
     @Override
     public void setOverridePhase(WorldRenderingPhase phase) {
+        overridePhase = (phase == WorldRenderingPhase.NONE) ? null : phase;
     }
 
     @Override
@@ -528,6 +548,145 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
                 || name.equals("begin");
     }
 
+    // ---- Phase → gbuffers program mapping (M5b) ----
+
+    /**
+     * Maps the current {@link WorldRenderingPhase} to the Iris gbuffers
+     * program name that should render it (M5b). Uses {@code phase.name()}
+     * string comparison to avoid referencing enum constants directly (Iris is
+     * {@code compileOnly} — enum values may vary across versions).
+     *
+     * <p>The mapping follows the standard Iris convention:
+     * <ul>
+     *   <li>{@code TERRAIN_SOLID} → {@code gbuffers_terrain}</li>
+     *   <li>{@code TERRAIN_CUTOUT_MIPPED} → {@code gbuffers_cutout_mipped}</li>
+     *   <li>{@code TERRAIN_CUTOUT} → {@code gbuffers_cutout}</li>
+     *   <li>{@code TERRAIN_TRANSLUCENT} → {@code gbuffers_water} (falls back
+     *       to {@code gbuffers_translucent} if the shaderpack has no
+     *       {@code gbuffers_water})</li>
+     *   <li>{@code ENTITIES} / {@code ENTITIES_TRANSLUCENT} →
+     *       {@code gbuffers_entities}</li>
+     *   <li>{@code BLOCK_ENTITIES} / {@code BLOCK_ENTITIES_TRANSLUCENT} →
+     *       {@code gbuffers_block}</li>
+     *   <li>{@code HAND} / {@code HAND_TRANSLUCENT} → {@code gbuffers_hand}</li>
+     *   <li>{@code SKY} / {@code SUN} / {@code MOON} / {@code STARS} →
+     *       {@code gbuffers_skybasic} (falls back to {@code gbuffers_terrain})</li>
+     * </ul>
+     *
+     * @return the gbuffers program name, or {@code null} if the phase does not
+     *         map to a gbuffers program (e.g. {@code NONE}, {@code PARTICLES},
+     *         {@code CLOUDS}, ...)
+     */
+    private static String phaseToGbuffersProgram(final WorldRenderingPhase phase) {
+        if (phase == null || phase == WorldRenderingPhase.NONE) {
+            return null;
+        }
+        String name = phase.name();
+        return switch (name) {
+            case "TERRAIN_SOLID" -> "gbuffers_terrain";
+            case "TERRAIN_CUTOUT_MIPPED" -> "gbuffers_cutout_mipped";
+            case "TERRAIN_CUTOUT" -> "gbuffers_cutout";
+            case "TERRAIN_TRANSLUCENT" -> "gbuffers_water";
+            case "ENTITIES", "ENTITIES_TRANSLUCENT" -> "gbuffers_entities";
+            case "BLOCK_ENTITIES", "BLOCK_ENTITIES_TRANSLUCENT" -> "gbuffers_block";
+            case "HAND", "HAND_TRANSLUCENT" -> "gbuffers_hand";
+            case "SKY", "SUN", "MOON", "STARS", "SKY_BASIC" -> "gbuffers_skybasic";
+            default -> null;
+        };
+    }
+
+    /**
+     * Resolves a gbuffers program name to a fallback if the shaderpack didn't
+     * compile the preferred one (M5b). For example, {@code gbuffers_water}
+     * falls back to {@code gbuffers_translucent}, and {@code gbuffers_hand}
+     * falls back to {@code gbuffers_terrain} if not present.
+     *
+     * @param preferred the preferred program name
+     * @return the preferred name if its shaders are compiled, otherwise a
+     *         fallback name, or {@code null} if neither is available
+     */
+    private String resolveGbuffersProgram(final String preferred) {
+        if (preferred == null) {
+            return null;
+        }
+        if (compiledShaders.containsKey(preferred)) {
+            return preferred;
+        }
+        // Fallbacks: gbuffers_water → gbuffers_translucent → gbuffers_terrain
+        if (preferred.equals("gbuffers_water")) {
+            if (compiledShaders.containsKey("gbuffers_translucent")) {
+                return "gbuffers_translucent";
+            }
+            if (compiledShaders.containsKey("gbuffers_terrain")) {
+                return "gbuffers_terrain";
+            }
+        }
+        // Fallbacks: gbuffers_hand → gbuffers_terrain
+        if (preferred.equals("gbuffers_hand")) {
+            if (compiledShaders.containsKey("gbuffers_terrain")) {
+                return "gbuffers_terrain";
+            }
+        }
+        // Fallbacks: gbuffers_skybasic → gbuffers_terrain
+        if (preferred.equals("gbuffers_skybasic")) {
+            if (compiledShaders.containsKey("gbuffers_terrain")) {
+                return "gbuffers_terrain";
+            }
+        }
+        // Fallbacks: gbuffers_entities / gbuffers_block → gbuffers_terrain
+        if ((preferred.equals("gbuffers_entities") || preferred.equals("gbuffers_block"))
+                && compiledShaders.containsKey("gbuffers_terrain")) {
+            return "gbuffers_terrain";
+        }
+        return null;
+    }
+
+    /**
+     * Returns the effective rendering phase (override takes precedence over
+     * the regular phase) for the current frame (M5b).
+     */
+    private static WorldRenderingPhase getEffectivePhase() {
+        return overridePhase != null ? overridePhase : currentPhase;
+    }
+
+    /**
+     * Returns the resolved gbuffers program name for the current rendering
+     * phase (M5b). This is what the draw-path mixin (M5c) will look up to
+     * substitute the vanilla pipeline with the Iris gbuffers pipeline.
+     *
+     * <p>Combines {@link #phaseToGbuffersProgram} (phase → preferred name) and
+     * {@link #resolveGbuffersProgram} (preferred → fallback if not compiled).
+     *
+     * @return the gbuffers program name (e.g. {@code "gbuffers_terrain"}), or
+     *         {@code null} if the current phase doesn't map to a gbuffers
+     *         program or no suitable compiled shader is available
+     */
+    public static String getActiveGbuffersProgram() {
+        if (activeInstance == null) {
+            return null;
+        }
+        WorldRenderingPhase phase = getEffectivePhase();
+        String preferred = phaseToGbuffersProgram(phase);
+        if (preferred == null) {
+            return null;
+        }
+        return activeInstance.resolveGbuffersProgram(preferred);
+    }
+
+    /**
+     * Returns the compiled MSL shader pair for the given program name (M5b).
+     * Used by the draw-path mixin (M5c) to retrieve the MSL for pipeline
+     * creation.
+     *
+     * @return the shader pair, or {@code null} if not compiled
+     */
+    public static MetalIrisBridge.ShaderPair getCompiledShader(final String name) {
+        if (activeInstance == null || name == null) {
+            return null;
+        }
+        return activeInstance.compiledShaders.get(name);
+    }
+
     @Override
     public void finalizeGameRendering() {
     }
@@ -536,8 +695,12 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
     public void destroy() {
         MetalIrisRenderer.clearCache();
         compiledShaders.clear();
-        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline destroyed (released {} compiled MSL shader pairs).",
-            compiledShaders.size());
+        if (activeInstance == this) {
+            activeInstance = null;
+            currentPhase = WorldRenderingPhase.NONE;
+            overridePhase = null;
+        }
+        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline destroyed (released compiled MSL shader pairs).");
     }
 
     /**
