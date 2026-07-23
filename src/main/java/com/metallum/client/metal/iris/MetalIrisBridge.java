@@ -376,27 +376,83 @@ public final class MetalIrisBridge {
     }
 
     /**
+     * Pattern to find existing {@code layout(location=N)} on in/out declarations
+     * so we can compute the starting offset for new locations. Captures group 1
+     * = location number, group 2 = storage qualifier (in/out).
+     */
+    private static final Pattern EXISTING_LAYOUT_LOCATION = Pattern.compile(
+            "layout\\s*\\(\\s*location\\s*=\\s*(\\d+)\\s*\\)[^;]*?\\b(in|out)\\b",
+            Pattern.MULTILINE
+    );
+
+    /**
+     * Detects array size in a variable name like {@code arr[8]} → {@code 8}.
+     * Returns 1 if no array specifier is present.
+     */
+    private static int arraySize(final String nameSpec) {
+        Matcher m = ARRAY_SIZE_PATTERN.matcher(nameSpec);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException ignored) {
+                // unsized array or non-numeric — treat as 1
+            }
+        }
+        return 1;
+    }
+
+    private static final Pattern ARRAY_SIZE_PATTERN = Pattern.compile("\\[(\\d+)\\]");
+
+    /**
      * Adds {@code layout(location=N)} to every top-level {@code in}/{@code out}
-     * declaration that doesn't already have a layout qualifier. Locations are
-     * assigned sequentially, with separate counters for {@code in} and
-     * {@code out}.
+     * declaration that doesn't already have a layout qualifier.
+     *
+     * <p>Three sub-issues must be handled correctly:
+     * <ol>
+     *   <li><b>Existing locations.</b> TransformPatcher injects its own
+     *       interface variables with explicit locations (e.g.
+     *       {@code layout(location=0) in vec3 iris_Position;}). New locations
+     *       must start after the max existing location to avoid
+     *       "overlapping use of location N" errors.</li>
+     *   <li><b>Multi-name declarations.</b> {@code out vec2 a, b;} assigns
+     *       both names to the same location if given a single
+     *       {@code layout(location=N)}. Each name must be split into its own
+     *       declaration with a unique location.</li>
+     *   <li><b>Arrays.</b> {@code out vec4 arr[8];} consumes 8 consecutive
+     *       locations in Vulkan GLSL. The counter must advance by the array
+     *       size, not 1.</li>
+     * </ol>
      *
      * <p>Handles optional interpolation qualifiers (flat, smooth, noperspective,
      * centroid, invariant, precise) that appear before the storage qualifier.
      */
     private static String addLayoutLocationsToInOut(final String glslSource) {
+        // Step 1: find max existing location for in and out separately.
+        int maxInLocation = -1;
+        int maxOutLocation = -1;
+        Matcher existingMatcher = EXISTING_LAYOUT_LOCATION.matcher(glslSource);
+        while (existingMatcher.find()) {
+            int loc = Integer.parseInt(existingMatcher.group(1));
+            String storage = existingMatcher.group(2);
+            if ("in".equals(storage)) {
+                maxInLocation = Math.max(maxInLocation, loc);
+            } else {
+                maxOutLocation = Math.max(maxOutLocation, loc);
+            }
+        }
+        int inLocation = maxInLocation + 1;
+        int outLocation = maxOutLocation + 1;
+
         Matcher matcher = UNLOCATED_IN_OUT.matcher(glslSource);
         if (!matcher.find()) {
             return glslSource;
         }
 
-        int inLocation = 0;
-        int outLocation = 0;
         StringBuffer result = new StringBuffer(glslSource.length() + 128);
         matcher.reset();
         while (matcher.find()) {
             String fullMatch = matcher.group(0);
-            // Skip if this declaration already has a layout qualifier anywhere.
+            // Skip if this declaration already has a layout qualifier.
             if (fullMatch.contains("layout")) {
                 matcher.appendReplacement(result, Matcher.quoteReplacement(fullMatch));
                 continue;
@@ -405,9 +461,29 @@ public final class MetalIrisBridge {
             String storage = matcher.group(2);     // "in" or "out"
             String type = matcher.group(3);
             String names = matcher.group(4).trim();
-            int location = "in".equals(storage) ? inLocation++ : outLocation++;
-            String replacement = "layout(location = " + location + ") " + qualifiers + storage + " " + type + " " + names + ";";
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+
+            // Step 2: split multi-name declarations into separate declarations,
+            // each with its own location.
+            String[] nameParts = names.split(",");
+            StringBuilder replacement = new StringBuilder();
+            for (int i = 0; i < nameParts.length; i++) {
+                String name = nameParts[i].trim();
+                int location = "in".equals(storage) ? inLocation : outLocation;
+                // Step 3: arrays consume multiple consecutive locations.
+                int size = arraySize(name);
+                if ("in".equals(storage)) {
+                    inLocation += size;
+                } else {
+                    outLocation += size;
+                }
+                replacement.append("layout(location = ").append(location).append(") ")
+                        .append(qualifiers).append(storage).append(" ").append(type)
+                        .append(" ").append(name).append(";");
+                if (i < nameParts.length - 1) {
+                    replacement.append("\n");
+                }
+            }
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement.toString()));
         }
         matcher.appendTail(result);
         return result.toString();
