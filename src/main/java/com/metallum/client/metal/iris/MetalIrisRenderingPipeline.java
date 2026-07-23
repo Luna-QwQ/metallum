@@ -9,10 +9,13 @@ import net.irisshaders.iris.features.FeatureFlags;
 import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.helpers.Tri;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
+import net.irisshaders.iris.shaderpack.loading.ProgramArrayId;
+import net.irisshaders.iris.shaderpack.loading.ProgramId;
 import net.irisshaders.iris.shaderpack.materialmap.WorldRenderingSettings;
 import net.irisshaders.iris.shaderpack.properties.CloudSetting;
 import net.irisshaders.iris.shaderpack.properties.ParticleRenderingSettings;
 import net.irisshaders.iris.shaderpack.programs.ProgramSet;
+import net.irisshaders.iris.shaderpack.programs.ProgramSource;
 import net.irisshaders.iris.shaderpack.texture.TextureStage;
 import net.irisshaders.iris.pipeline.WorldRenderingPhase;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
@@ -23,6 +26,7 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
@@ -33,8 +37,9 @@ import java.util.OptionalInt;
  * creates hundreds of OpenGL resources — framebuffers, textures, shader
  * programs — via native GL calls that crash on Metal), this pipeline:
  * <ul>
- *   <li>Stores the {@link ProgramSet} for future shader compilation to MSL
- *       via {@link MetalIrisBridge}.</li>
+ *   <li>Compiles all shaderpack programs from GLSL to Metal Shading Language
+ *       via {@link MetalIrisBridge#compileIrisProgram} during construction,
+ *       validating the GLSL→SPIR-V→MSL pipeline.</li>
  *   <li>Implements all {@code WorldRenderingPipeline} methods with the same
  *       safe defaults as {@code VanillaRenderingPipeline}.</li>
  *   <li>Makes {@link #beginLevelRendering()} a true no-op (no GL calls),
@@ -42,10 +47,8 @@ import java.util.OptionalInt;
  *       {@code GL.getCapabilities()} and {@code glUseProgram(0)}.</li>
  * </ul>
  *
- * <p>This allows the game to run with a shaderpack "loaded" (the pack is
- * parsed, programs are available) without crashing, and provides a foundation
- * for future phases where shader programs will be compiled to Metal MSL and
- * rendered using Metal render passes.
+ * <p>The compiled MSL shaders are not yet used for rendering — this is a
+ * validation step. Actual Metal render pass integration is future work.
  *
  * <p>The pipeline is selected by {@code MixinIris}'s {@code createPipeline}
  * redirect, which returns {@code new MetalIrisRenderingPipeline(programs)}
@@ -71,7 +74,97 @@ public class MetalIrisRenderingPipeline implements WorldRenderingPipeline {
         WorldRenderingSettings.INSTANCE.setBreaksAnisotropy(false);
         WorldRenderingSettings.INSTANCE.setBlockTypeIds(Object2ObjectMaps.emptyMap());
 
-        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline created. Shaderpack loaded — programs available for Metal MSL compilation.");
+        compileShadersToMsl();
+    }
+
+    /**
+     * Compiles all shaderpack programs from GLSL to Metal Shading Language
+     * via {@link MetalIrisBridge}, validating the GLSL→SPIR-V→MSL pipeline.
+     *
+     * <p>This iterates over all gbuffer and composite programs in the
+     * {@link ProgramSet}, extracts their vertex/fragment GLSL source, and
+     * compiles each pair to MSL. Results are logged but not yet used for
+     * rendering — this is a validation step for the compilation pipeline.
+     *
+     * <p>Compilation failures are logged as warnings but do not prevent the
+     * pipeline from being created — the game continues with vanilla rendering
+     * for any programs that fail to compile.
+     */
+    private void compileShadersToMsl() {
+        int total = 0;
+        int success = 0;
+        int skipped = 0;
+        int failed = 0;
+
+        for (ProgramId id : ProgramId.values()) {
+            Optional<ProgramSource> sourceOpt = programSet.get(id);
+            if (sourceOpt.isEmpty()) {
+                skipped++;
+                continue;
+            }
+            ProgramSource source = sourceOpt.get();
+            if (!source.isValid()) {
+                skipped++;
+                continue;
+            }
+
+            total++;
+            String name = source.getName();
+            Optional<String> vsOpt = source.getVertexSource();
+            Optional<String> fsOpt = source.getFragmentSource();
+
+            if (vsOpt.isEmpty() || fsOpt.isEmpty()) {
+                skipped++;
+                continue;
+            }
+
+            try {
+                MetalIrisBridge.ShaderPair pair = MetalIrisBridge.compileIrisProgram(
+                    name, vsOpt.get(), fsOpt.get());
+                if (pair.vertex() != null && pair.fragment() != null) {
+                    success++;
+                    LOGGER.info("[MetalUniversal] Compiled '{}' → MSL (vsh: {} chars, fsh: {} chars)",
+                        name, pair.vertex().source().length(), pair.fragment().source().length());
+                }
+            } catch (Exception e) {
+                failed++;
+                LOGGER.warn("[MetalUniversal] Failed to compile '{}' to MSL: {}", name, e.getMessage());
+            }
+        }
+
+        for (ProgramArrayId arrayId : ProgramArrayId.values()) {
+            ProgramSource[] sources = programSet.getComposite(arrayId);
+            if (sources == null) continue;
+            for (int i = 0; i < sources.length; i++) {
+                ProgramSource source = sources[i];
+                if (source == null || !source.isValid()) {
+                    continue;
+                }
+                total++;
+                String name = source.getName();
+                Optional<String> vsOpt = source.getVertexSource();
+                Optional<String> fsOpt = source.getFragmentSource();
+                if (vsOpt.isEmpty() || fsOpt.isEmpty()) {
+                    skipped++;
+                    continue;
+                }
+                try {
+                    MetalIrisBridge.ShaderPair pair = MetalIrisBridge.compileIrisProgram(
+                        name, vsOpt.get(), fsOpt.get());
+                    if (pair.vertex() != null && pair.fragment() != null) {
+                        success++;
+                        LOGGER.info("[MetalUniversal] Compiled '{}' → MSL (vsh: {} chars, fsh: {} chars)",
+                            name, pair.vertex().source().length(), pair.fragment().source().length());
+                    }
+                } catch (Exception e) {
+                    failed++;
+                    LOGGER.warn("[MetalUniversal] Failed to compile '{}' to MSL: {}", name, e.getMessage());
+                }
+            }
+        }
+
+        LOGGER.info("[MetalUniversal] MetalIrisRenderingPipeline ready. MSL compilation: {} compiled, {} failed, {} skipped (no source), {} total.",
+            success, failed, skipped, total);
     }
 
     @Override
