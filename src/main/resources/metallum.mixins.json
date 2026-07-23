@@ -10,6 +10,7 @@
     "iris.MixinGLDebug",
     "iris.MixinIris",
     "iris.MixinIrisRenderSystem",
+    "iris.MixinMetalGpuTexture",
     "render.PreferredGraphicsApiMixin",
     "sodium.DrawBackendMixin",
     "sodium.DrawContextMixin",
