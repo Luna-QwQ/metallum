@@ -11,6 +11,7 @@
     "iris.MixinIris",
     "iris.MixinIrisRenderSystem",
     "iris.MixinMetalGpuTexture",
+    "iris.MixinPBRTextureManager",
     "iris.MixinStandardMacros",
     "iris.MixinVanillaRenderingPipeline",
     "render.PreferredGraphicsApiMixin",

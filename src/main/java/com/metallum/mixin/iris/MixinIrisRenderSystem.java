@@ -33,23 +33,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *   <li>{@code supportsSSBO()} is redirected to return {@code false} on
  *       non-GL backends. This allows {@code <clinit>} to complete safely:
  *       {@code SamplerLimits} sets {@code maxShaderStorageUnits = 0} and
- *       {@code emptyArray} is allocated with a valid size. (The other
- *       {@code GlStateManager._getInteger} calls in {@code SamplerLimits}'
- *       constructor do not crash &mdash; they return default values on
- *       Metal, as confirmed by the crash trace which only fails at
- *       {@code supportsSSBO()}.)</li>
+ *       {@code emptyArray} is allocated with a valid size.</li>
  *   <li>{@code initRenderer()} is canceled at HEAD on non-GL backends,
  *       preventing the five {@code GL.getCapabilities()} reads and GL
  *       resource allocation in the method body.</li>
+ *   <li>{@code supportsImageLoadStore()} is redirected to return {@code false}.
+ *       Called by {@code FeatureFlags.CUSTOM_IMAGES.hardwareRequirement}
+ *       during {@code ShaderPack} construction (feature detection).</li>
+ *   <li>{@code supportsBufferBlending()} is redirected to return {@code false}.
+ *       Called by {@code FeatureFlags.PER_BUFFER_BLENDING.hardwareRequirement}
+ *       and {@code ShaderProperties} during {@code ShaderPack} construction.</li>
+ *   <li>{@code getMaxImageUnits()} is redirected to return {@code 0}.
+ *       Called by {@code ImageLimits} (lazy, but defensive).</li>
  * </ul>
  *
  * <p>The fields that {@code initRenderer()} would have set
  * ({@code dsaState}, {@code hasMultibind}, {@code supportsCompute},
  * {@code supportsTesselation}, {@code samplers}) remain at their default
- * values ({@code null}/{@code false}). This is acceptable because
- * {@link MixinIris} cancels {@code Iris.onRenderSystemInit()} which prevents
- * {@code loadShaderpack()}, so Iris's rendering pipeline never activates and
- * these fields are never read.
+ * values ({@code null}/{@code false}). {@code supportsCompute()} and
+ * {@code supportsTesselation()} return these default fields (safe).
  *
  * <p>{@code remap = false} because these are Iris's own methods (not Mojang
  * obfuscated methods).
@@ -67,6 +69,27 @@ public class MixinIrisRenderSystem {
     private static void metallum$cancelInitRendererOnNonGl(CallbackInfo ci) {
         if (MetalIrisBridge.isNonGlBackend()) {
             ci.cancel();
+        }
+    }
+
+    @Inject(method = "supportsImageLoadStore", at = @At("HEAD"), cancellable = true, remap = false)
+    private static void metallum$redirectSupportsImageLoadStoreOnNonGl(CallbackInfoReturnable<Boolean> cir) {
+        if (MetalIrisBridge.isNonGlBackend()) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "supportsBufferBlending", at = @At("HEAD"), cancellable = true, remap = false)
+    private static void metallum$redirectSupportsBufferBlendingOnNonGl(CallbackInfoReturnable<Boolean> cir) {
+        if (MetalIrisBridge.isNonGlBackend()) {
+            cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "getMaxImageUnits", at = @At("HEAD"), cancellable = true, remap = false)
+    private static void metallum$redirectGetMaxImageUnitsOnNonGl(CallbackInfoReturnable<Integer> cir) {
+        if (MetalIrisBridge.isNonGlBackend()) {
+            cir.setReturnValue(0);
         }
     }
 }
