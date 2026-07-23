@@ -20,6 +20,7 @@ import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Public entry point for Iris shader rendering on the Metal backend.
@@ -57,6 +58,18 @@ public final class MetalIrisRenderer {
 
     /** Cached 1x1 dummy texture handle (created lazily, reused across frames). */
     private static MemorySegment dummyTextureHandle = MemorySegment.NULL;
+
+    /**
+     * The final-pass render target view produced by {@link #renderFinalPass},
+     * handed off to {@link MetalSurface#blitFromTexture} for presentation.
+     *
+     * <p>Set during {@code finalizeLevelRendering} (when the final pass is
+     * rendered to an offscreen RGBA8 texture), consumed during vanilla's
+     * present call. If no final pass ran this frame (or the view was already
+     * consumed), this is {@code null} and {@code blitFromTexture} presents
+     * vanilla's main render target as normal.
+     */
+    private static final AtomicReference<MetalGpuTextureView> pendingFinalPassView = new AtomicReference<>();
 
     private MetalIrisRenderer() {
     }
@@ -184,9 +197,11 @@ public final class MetalIrisRenderer {
     }
 
     /**
-     * Renders the Iris {@code final} pass to an offscreen render target.
+     * Renders the Iris {@code final} pass to an offscreen RGBA8 render target,
+     * then hands the target view to {@link MetalSurface#blitFromTexture} for
+     * on-screen presentation.
      *
-     * <p>This is the M4c entry point called by
+     * <p>This is the M4f entry point called by
      * {@link com.metallum.client.metal.iris.MetalIrisRenderingPipeline#finalizeLevelRendering()}.
      * It:
      * <ol>
@@ -195,13 +210,20 @@ public final class MetalIrisRenderer {
      *       the final program's MSL</li>
      *   <li>Creates an RGBA8 offscreen render target texture</li>
      *   <li>Renders a fullscreen triangle to it</li>
+     *   <li>Stores the resulting view in {@link #pendingFinalPassView} for
+     *       {@code MetalSurface.blitFromTexture} to consume at present time</li>
      * </ol>
      *
-     * <p>The offscreen texture is <b>not yet presented to the screen</b> —
-     * screen presentation requires integration with {@code MetalSurface}'s
-     * present path and is future work. This step validates that the full
-     * MSL → MTLFunction → MTLRenderPipelineState → draw call chain works
-     * end-to-end at runtime.
+     * <p>The offscreen texture is <b>not</b> closed here — ownership transfers
+     * to {@code MetalSurface}, which presents it and then closes it via the
+     * device's deferred-release queue (the native texture survives until the
+     * present command buffer completes, 3 submits later). If a previous frame's
+     * view was never consumed (e.g. present didn't run), it is released here.
+     *
+     * <p>The present path samples the source texture via a dedicated present
+     * pipeline (see {@code metallum_MTLCommandBuffer_encodePresentTextureToDrawable}
+     * in the native layer), so the RGBA8 source format need not match the
+     * BGRA8 drawable format.
      *
      * @param finalVertexMsl   compiled MSL vertex source for the {@code final} program
      * @param finalFragmentMsl compiled MSL fragment source for the {@code final} program
@@ -235,9 +257,14 @@ public final class MetalIrisRenderer {
             return false;
         }
 
+        // Release any previously pending final-pass view that was never
+        // consumed (e.g. if blitFromTexture wasn't called last frame).
+        MetalGpuTextureView stale = pendingFinalPassView.getAndSet(null);
+        if (stale != null) {
+            closePendingView(stale);
+        }
+
         // Create an RGBA8 render target texture via the public GpuDevice API.
-        // createTexture returns GpuTexture; we cast to MetalGpuTexture since
-        // we're in the same package.
         GpuTexture renderTargetTex;
         MetalGpuTextureView renderTargetView;
         try {
@@ -259,10 +286,46 @@ public final class MetalIrisRenderer {
                 device, pipeline, renderTargetView, width, height
         );
 
-        // Clean up the per-frame render target.
-        renderTargetTex.close();
+        if (success) {
+            // Hand ownership to MetalSurface.blitFromTexture, which will
+            // present this texture to the drawable and defer-release it after
+            // the present command buffer completes.
+            pendingFinalPassView.set(renderTargetView);
+        } else {
+            renderTargetTex.close();
+            renderTargetView.close();
+        }
 
         return success;
+    }
+
+    /**
+     * Returns the pending final-pass render target view (set by
+     * {@link #renderFinalPass}), or {@code null} if none is pending.
+     *
+     * <p>The caller ({@link MetalSurface#blitFromTexture}) takes ownership of
+     * the returned view and must close it (via deferred release) after
+     * presenting it. Package-private — only accessible within the render
+     * package.
+     */
+    static MetalGpuTextureView consumePendingFinalPassView() {
+        return pendingFinalPassView.getAndSet(null);
+    }
+
+    /**
+     * Closes a pending final-pass view and its underlying texture. The native
+     * texture handle is released via the device's deferred-release queue
+     * (3-submit delay), so this is safe to call even if the texture was just
+     * used by an in-flight command buffer.
+     */
+    private static void closePendingView(final MetalGpuTextureView view) {
+        try {
+            GpuTexture tex = view.texture();
+            view.close();
+            tex.close();
+        } catch (Exception e) {
+            LOGGER.warn("[MetalUniversal] Error closing stale final-pass view", e);
+        }
     }
 
     /**

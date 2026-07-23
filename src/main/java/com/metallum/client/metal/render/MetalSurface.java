@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.CommandEncoderBackend;
 import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
+import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -59,8 +60,47 @@ final class MetalSurface implements GpuSurfaceBackend {
             throw new IllegalArgumentException("Metal surface requires MetalCommandEncoder");
         }
 
-        metalEncoder.presentTextureToDrawable(metalLayer, textureView);
+        // If the Iris final pass rendered an offscreen texture this frame,
+        // present that instead of vanilla's main render target. The native
+        // present path samples the source texture via a dedicated present
+        // pipeline (it does not blit directly), so the RGBA8 source format
+        // need not match the BGRA8 drawable format. If no final pass ran,
+        // fall back to presenting vanilla's texture as normal.
+        GpuTextureView effectiveView = textureView;
+        MetalGpuTextureView irisView = MetalIrisRenderer.consumePendingFinalPassView();
+        if (irisView != null) {
+            effectiveView = irisView;
+        }
+
+        metalEncoder.presentTextureToDrawable(metalLayer, effectiveView);
         this.pendingPresentEncoder = metalEncoder;
+
+        // The Iris final-pass texture has now been encoded into the present
+        // command. Close it — the device's deferred-release queue (3-submit
+        // delay) keeps the native texture alive until the present command
+        // buffer completes. Vanilla's texture is owned by vanilla and left
+        // untouched.
+        if (irisView != null) {
+            closeIrisView(irisView);
+        }
+    }
+
+    /**
+     * Closes an Iris final-pass view and its underlying texture via the
+     * device's deferred-release queue. Mirrors
+     * {@link MetalIrisRenderer}'s private {@code closePendingView}, but
+     * inlined here so {@code MetalSurface} owns the lifecycle of the view
+     * it consumed.
+     */
+    private void closeIrisView(final MetalGpuTextureView view) {
+        try {
+            GpuTexture tex = view.texture();
+            view.close();
+            tex.close();
+        } catch (Exception ignored) {
+            // Best-effort cleanup; the deferred-release queue will reclaim
+            // the native handle regardless.
+        }
     }
 
     @Override
