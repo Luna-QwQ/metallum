@@ -360,6 +360,36 @@ public final class MetalNativeBridge {
                     "metallum_MTLDevice_makeRenderPipelineState",
                     FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
             );
+            // Iris MRT entry points. setColorAttachmentFormat / disableBlendingForAttachment
+            // take (desc, index, ...) — index is a C `Int` (Swift `Int` on 64-bit = long).
+            MTLRenderPipelineDescriptorSetColorAttachmentFormat = downcall(
+                    lookup,
+                    "metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat",
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG)
+            );
+            MTLRenderPipelineDescriptorDisableBlendingForAttachment = downcall(
+                    lookup,
+                    "metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment",
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG)
+            );
+            // makeRenderCommandEncoderMulti: colorTextures is a pointer to an array of
+            // `colorCount` opaque MTLTexture pointers (each 8 bytes on 64-bit).
+            MTLCommandBufferMakeRenderCommandEncoderMulti = downcall(
+                    lookup,
+                    "metallum_MTLCommandBuffer_makeRenderCommandEncoderMulti",
+                    FunctionDescriptor.of(
+                            ValueLayout.ADDRESS,
+                            ValueLayout.ADDRESS,  // commandBuffer
+                            ValueLayout.ADDRESS,  // colorTextures (pointer to pointer array)
+                            LONG,                 // colorCount
+                            ValueLayout.ADDRESS,  // depthTexture
+                            DOUBLE, DOUBLE,       // viewport
+                            INT,                  // clearColorEnabled
+                            FLOAT, FLOAT, FLOAT, FLOAT,
+                            INT,                  // clearDepthEnabled
+                            DOUBLE                // clearDepth
+                    )
+            );
             configureLayer = downcall(lookup, "metallum_configure_layer", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, DOUBLE, DOUBLE, INT));
             releaseObject = downcall(lookup, "metallum_release_object", FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
             getBufferContents = downcall(lookup, "metallum_get_buffer_contents", FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -581,6 +611,10 @@ public final class MetalNativeBridge {
     private static final MethodHandle MTLRenderPipelineDescriptorSetAttachmentFormats;
     private static final MethodHandle MTLRenderPipelineDescriptorSetBlendState;
     private static final MethodHandle MTLDeviceMakeRenderPipelineState;
+    // Iris multi-render-target (MRT) entry points — see MetallumNative.swift.
+    private static final MethodHandle MTLRenderPipelineDescriptorSetColorAttachmentFormat;
+    private static final MethodHandle MTLRenderPipelineDescriptorDisableBlendingForAttachment;
+    private static final MethodHandle MTLCommandBufferMakeRenderCommandEncoderMulti;
     private static final MethodHandle configureLayer;
     private static final MethodHandle releaseObject;
     private static final MethodHandle getBufferContents;
@@ -1506,6 +1540,93 @@ public final class MetalNativeBridge {
             return (MemorySegment) MTLDeviceMakeRenderPipelineState.invokeExact(segment(device), segment(descriptor));
         } catch (Throwable throwable) {
             throw bridgeFailure("metallum_MTLDevice_makeRenderPipelineState", throwable);
+        }
+    }
+
+    /**
+     * Sets the pixel format of a single color attachment by index (0-7).
+     * Used by Iris to configure multi-render-target pipeline descriptors.
+     */
+    public static void metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat(
+            final MemorySegment descriptor,
+            final long index,
+            final MTLPixelFormat colorFormat
+    ) {
+        try {
+            MTLRenderPipelineDescriptorSetColorAttachmentFormat.invokeExact(
+                    segment(descriptor), index, colorFormat.value);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat", throwable);
+        }
+    }
+
+    /**
+     * Disables blending and enables full color write for a single color
+     * attachment by index (0-7).
+     */
+    public static void metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment(
+            final MemorySegment descriptor,
+            final long index
+    ) {
+        try {
+            MTLRenderPipelineDescriptorDisableBlendingForAttachment.invokeExact(
+                    segment(descriptor), index);
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment", throwable);
+        }
+    }
+
+    /**
+     * Creates a render command encoder with multiple color attachments.
+     *
+     * @param commandBuffer   the command buffer to encode into
+     * @param colorTextures   a {@link MemorySegment} pointing to a contiguous
+     *                        array of {@code colorCount} opaque MTLTexture
+     *                        pointers (each 8 bytes on 64-bit). The segment
+     *                        must remain valid for the duration of this call.
+     *                        NULL entries in the array leave that slot unbound.
+     * @param colorCount      number of entries in the {@code colorTextures} array
+     * @param depthTexture    the depth texture, or {@link MemorySegment#NULL}
+     * @param viewportWidth   viewport width in pixels
+     * @param viewportHeight  viewport height in pixels
+     * @param clearColorEnabled  whether to clear all bound color attachments
+     * @param clearDepthEnabled whether to clear the depth attachment
+     * @param clearDepth      the depth clear value
+     * @return the encoder handle, or {@link MemorySegment#NULL} on failure
+     */
+    public static MemorySegment MTLCommandBuffer_makeRenderCommandEncoderMulti(
+            final MemorySegment commandBuffer,
+            final MemorySegment colorTextures,
+            final long colorCount,
+            final MemorySegment depthTexture,
+            final double viewportWidth,
+            final double viewportHeight,
+            final int clearColorEnabled,
+            final float clearColorRed,
+            final float clearColorGreen,
+            final float clearColorBlue,
+            final float clearColorAlpha,
+            final int clearDepthEnabled,
+            final double clearDepth
+    ) {
+        try {
+            return (MemorySegment) MTLCommandBufferMakeRenderCommandEncoderMulti.invokeExact(
+                    segment(commandBuffer),
+                    segment(colorTextures),
+                    colorCount,
+                    segment(depthTexture),
+                    viewportWidth,
+                    viewportHeight,
+                    clearColorEnabled,
+                    clearColorRed,
+                    clearColorGreen,
+                    clearColorBlue,
+                    clearColorAlpha,
+                    clearDepthEnabled,
+                    clearDepth
+            );
+        } catch (Throwable throwable) {
+            throw bridgeFailure("metallum_MTLCommandBuffer_makeRenderCommandEncoderMulti", throwable);
         }
     }
 

@@ -71,6 +71,24 @@ public final class MTLRenderPipelineDescriptor implements AutoCloseable {
         );
     }
 
+    /**
+     * Sets the pixel format of a single color attachment by index (0-7).
+     * Used by Iris for multi-render-target (gbuffer colortex0-7) pipelines.
+     */
+    public void setColorAttachmentFormat(final long index, final MTLPixelFormat colorFormat) {
+        MetalNativeBridge.metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat(
+                this.handle, index, colorFormat);
+    }
+
+    /**
+     * Disables blending and enables full color write for a single color
+     * attachment by index (0-7).
+     */
+    public void disableBlendingForAttachment(final long index) {
+        MetalNativeBridge.metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment(
+                this.handle, index);
+    }
+
     @Override
     public void close() {
         if (!this.closed) {

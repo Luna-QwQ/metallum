@@ -1719,3 +1719,106 @@ public func metallum_MTLDevice_makeRenderPipelineState(
         }
     }
 }
+
+// MARK: - Iris multi-render-target (MRT) support
+//
+// These functions extend the Metal backend to support up to 8 color
+// attachments, which Iris requires for gbuffer colortex0-7. The existing
+// single-attachment functions above (setAttachmentFormats / setBlendState /
+// makeRenderCommandEncoder) are left unchanged so Mojang's RenderPipeline
+// path keeps working unchanged; Iris uses these MRT-aware entry points
+// exclusively.
+
+/// Sets the pixel format of a single color attachment by index (0-7).
+@_cdecl("metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat")
+public func metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat(
+    _ desc: MTLRenderPipelineDescriptor,
+    _ index: Int,
+    _ colorFormat: MTLPixelFormat
+) {
+    autoreleasepool {
+        desc.colorAttachments[index].pixelFormat = colorFormat
+    }
+}
+
+/// Disables blending and enables full color write for a single color
+/// attachment by index (0-7).
+@_cdecl("metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment")
+public func metallum_MTLRenderPipelineDescriptor_disableBlendingForAttachment(
+    _ desc: MTLRenderPipelineDescriptor,
+    _ index: Int
+) {
+    autoreleasepool {
+        desc.colorAttachments[index].isBlendingEnabled = false
+        desc.colorAttachments[index].writeMask = .all
+    }
+}
+
+/// Creates a render command encoder with multiple color attachments.
+///
+/// `colorTextures` points to a C array of `colorCount` opaque MTLTexture
+/// pointers (each pointer is the value returned by metallum_create_texture_2d
+/// / metallum_create_texture_view). NULL entries in the array leave that
+/// attachment slot unbound. All bound color attachments share the same clear
+/// color when `clearColorEnabled != 0`.
+@_cdecl("metallum_MTLCommandBuffer_makeRenderCommandEncoderMulti")
+public func metallum_MTLCommandBuffer_makeRenderCommandEncoderMulti(
+    _ commandBuffer: MTLCommandBuffer,
+    _ colorTextures: UnsafeMutableRawPointer?,
+    _ colorCount: Int,
+    _ depthTexture: MTLTexture?,
+    _ viewportWidth: Double,
+    _ viewportHeight: Double,
+    _ clearColorEnabled: Int32,
+    _ clearColorRed: Float,
+    _ clearColorGreen: Float,
+    _ clearColorBlue: Float,
+    _ clearColorAlpha: Float,
+    _ clearDepthEnabled: Int32,
+    _ clearDepth: Double
+) -> UnsafeMutableRawPointer? {
+    return autoreleasepool {
+        guard colorCount > 0 || depthTexture != nil else {
+            return nil
+        }
+        let renderPass = MTLRenderPassDescriptor()
+        if let colorTextures, colorCount > 0 {
+            // Each array element is an opaque pointer (8 bytes on 64-bit).
+            let texPtr = colorTextures.assumingMemoryBound(to: UnsafeMutableRawPointer?.self)
+            let bounded = min(colorCount, 8)
+            for i in 0..<bounded {
+                if let raw = texPtr[i] {
+                    // Borrow (no retain/release): Java owns the texture handle.
+                    let texture = Unmanaged<MTLTexture>.fromOpaque(raw).takeUnretainedValue()
+                    renderPass.colorAttachments[i].texture = texture
+                    if clearColorEnabled != 0 {
+                        renderPass.colorAttachments[i].loadAction = .clear
+                        renderPass.colorAttachments[i].clearColor = makeClearColor(
+                            red: clearColorRed, green: clearColorGreen,
+                            blue: clearColorBlue, alpha: clearColorAlpha)
+                    } else {
+                        renderPass.colorAttachments[i].loadAction = .load
+                    }
+                    renderPass.colorAttachments[i].storeAction = .store
+                }
+            }
+        }
+        if let depthTexture {
+            renderPass.depthAttachment.texture = depthTexture
+            renderPass.depthAttachment.loadAction = clearDepthEnabled != 0 ? .clear : .load
+            renderPass.depthAttachment.clearDepth = clearDepth
+            renderPass.depthAttachment.storeAction = .store
+            let stencilFormat = stencilPixelFormat(for: depthTexture.pixelFormat)
+            if stencilFormat != .invalid {
+                renderPass.stencilAttachment.texture = depthTexture
+                renderPass.stencilAttachment.loadAction = .dontCare
+                renderPass.stencilAttachment.storeAction = .dontCare
+            }
+        }
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPass) else {
+            return nil
+        }
+        encoder.setViewport(MTLViewport(originX: 0.0, originY: 0.0, width: viewportWidth, height: viewportHeight, znear: 0.0, zfar: 1.0))
+        return retainedPointer(encoder)
+    }
+}

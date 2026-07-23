@@ -55,6 +55,52 @@ public final class MTLCommandBuffer {
         return new MTLRenderCommandEncoder(encoder);
     }
 
+    /**
+     * Creates a render command encoder with multiple color attachments (MRT).
+     *
+     * @param colorTexturesArray a {@link MemorySegment} pointing to a
+     *                           contiguous array of {@code colorCount} opaque
+     *                           MTLTexture pointers (each 8 bytes on 64-bit).
+     *                           NULL entries leave that slot unbound. The
+     *                           segment must remain valid for this call.
+     * @param colorCount         number of entries in the array
+     * @param depthTexture       the depth texture handle, or {@link MemorySegment#NULL}
+     */
+    public MTLRenderCommandEncoder makeRenderCommandEncoderMulti(
+            final MemorySegment colorTexturesArray,
+            final long colorCount,
+            final MemorySegment depthTexture,
+            final double viewportWidth,
+            final double viewportHeight,
+            final int clearColorEnabled,
+            final float clearColorRed,
+            final float clearColorGreen,
+            final float clearColorBlue,
+            final float clearColorAlpha,
+            final int clearDepthEnabled,
+            final double clearDepth
+    ) {
+        MemorySegment encoder = MetalNativeBridge.MTLCommandBuffer_makeRenderCommandEncoderMulti(
+                handle(),
+                colorTexturesArray,
+                colorCount,
+                depthTexture,
+                viewportWidth,
+                viewportHeight,
+                clearColorEnabled,
+                clearColorRed,
+                clearColorGreen,
+                clearColorBlue,
+                clearColorAlpha,
+                clearDepthEnabled,
+                clearDepth
+        );
+        if (MetalNativeBridge.isNullHandle(encoder)) {
+            throw new IllegalStateException("Failed to create MTLRenderCommandEncoder (multi-MRT)");
+        }
+        return new MTLRenderCommandEncoder(encoder);
+    }
+
     public void clearColorDepthTexturesRegion(
             final MemorySegment colorTexture,
             final float clearColorRed,

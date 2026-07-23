@@ -16,7 +16,9 @@ import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.IdentityHashMap;
@@ -181,6 +183,65 @@ final class MetalCommandEncoder implements CommandEncoderBackend {
         currentEncoder = encoder;
         renderColorAttachment = colorAttachment;
         renderDepthAttachment = depthAttachment;
+        return encoder;
+    }
+
+    /**
+     * Creates a render command encoder targeting multiple color attachments
+     * (MRT), for Iris gbuffer/composite passes that write to colortex0-7.
+     *
+     * <p>Unlike {@link #renderCommandEncoder}, this path always ends any
+     * previously active encoder and creates a fresh one — it does not
+     * participate in the single-attachment reuse cache, since Iris passes
+     * have distinct attachment sets.
+     *
+     * @param colorTextureViews array of color attachment views; entries may be
+     *                          {@code null} to leave that slot unbound
+     * @param colorCount        number of entries to read from the array
+     * @param depthTextureView  the depth attachment view, or {@code null}
+     * @return a new render command encoder
+     */
+    MTLRenderCommandEncoder renderCommandEncoderMulti(
+            final MetalGpuTextureView[] colorTextureViews,
+            final int colorCount,
+            @Nullable final MetalGpuTextureView depthTextureView,
+            final int viewportWidth,
+            final int viewportHeight,
+            final boolean clearColorEnabled,
+            final float clearColorRed,
+            final float clearColorGreen,
+            final float clearColorBlue,
+            final float clearColorAlpha,
+            final boolean clearDepthEnabled,
+            final double clearDepthValue
+    ) {
+        endEncoder();
+        MemorySegment depthAttachment = depthTextureView == null
+                ? MemorySegment.NULL : depthTextureView.nativeHandle();
+        MTLRenderCommandEncoder encoder;
+        // The texture pointer array only needs to live for the duration of the
+        // native call, so a confined arena closed immediately after is safe.
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment texArray = arena.allocateArray(ValueLayout.ADDRESS, colorCount);
+            for (int i = 0; i < colorCount; i++) {
+                MemorySegment handle = colorTextureViews[i] == null
+                        ? MemorySegment.NULL : colorTextureViews[i].nativeHandle();
+                texArray.setAtIndex(ValueLayout.ADDRESS, i, handle);
+            }
+            encoder = commandBuffer().makeRenderCommandEncoderMulti(
+                    texArray, colorCount, depthAttachment,
+                    viewportWidth, viewportHeight,
+                    clearColorEnabled ? 1 : 0,
+                    clearColorRed, clearColorGreen, clearColorBlue, clearColorAlpha,
+                    clearDepthEnabled ? 1 : 0,
+                    clearDepthValue
+            );
+        }
+        encoder.waitForFence(fence, MTLRenderStages.VertexAndFragment);
+        currentEncoder = encoder;
+        // Multi-MRT path does not track a single color attachment for reuse.
+        renderColorAttachment = MemorySegment.NULL;
+        renderDepthAttachment = MemorySegment.NULL;
         return encoder;
     }
 
