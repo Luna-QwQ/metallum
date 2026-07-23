@@ -38,11 +38,19 @@ import java.util.concurrent.atomic.AtomicReference;
  * vertex shader (using {@code vertex_id}) — no vertex buffers are needed. This
  * is the standard technique for Iris composite/deferred/final passes.
  *
- * <h2>M4c — Final pass</h2>
- * The {@link #renderFinalPass} method creates an offscreen RGBA8 render target,
- * renders the {@code final} shader program to it via a fullscreen triangle, and
- * logs the result. The offscreen texture is not yet presented to the screen —
- * that integration is future work.
+ * <h2>M4f — Final pass screen presentation</h2>
+ * The {@link #renderFinalPass} method renders the {@code final} shader to an
+ * offscreen RGBA8 target, then hands the view to
+ * {@link MetalSurface#blitFromTexture} via {@link #consumePendingFinalPassView}
+ * for on-screen presentation (the present path samples the texture, so RGBA8
+ * need not match the BGRA8 drawable).
+ *
+ * <h2>M4g — Composite chaining</h2>
+ * Composite/deferred passes ({@link #renderCompositePass}) use a persistent
+ * two-set ping-pong pool of RGBA16F MRT targets. Each pass reads the current
+ * "read set" as samplers, writes the "write set", then swaps — so
+ * composite1 → composite2 → … → final chain correctly. The final pass reads
+ * the last composite output as its samplers.
  */
 public final class MetalIrisRenderer {
     private static final Logger LOGGER = LoggerFactory.getLogger("MetalUniversal");
@@ -70,6 +78,31 @@ public final class MetalIrisRenderer {
      * vanilla's main render target as normal.
      */
     private static final AtomicReference<MetalGpuTextureView> pendingFinalPassView = new AtomicReference<>();
+
+    /**
+     * Number of MRT color attachments in the composite target pool. Matches
+     * {@code MetalIrisRenderingPipeline.COMPOSITE_MRT_COUNT}. Most shaderpacks
+     * use colortex0–3 in composite/deferred passes.
+     */
+    private static final int COMPOSITE_TARGET_COUNT = 4;
+
+    /**
+     * Two ping-pong sets of HDR render targets for composite/deferred passes
+     * (M4g). Each composite pass reads from the current "read set" (bound as
+     * samplers) and writes to the "write set" (MRT color attachments), then
+     * the sets swap. This is how Iris chains composite1 → composite2 → … →
+     * final.
+     *
+     * <p>The textures are persistent across passes and frames (temporal data
+     * survives), recreated only when the screen size changes.
+     */
+    private static GpuTexture[] compositeSetA = null;
+    private static GpuTexture[] compositeSetB = null;
+    private static MetalGpuTextureView[] compositeViewsA = null;
+    private static MetalGpuTextureView[] compositeViewsB = null;
+    private static boolean compositeReadIsA = true;
+    private static int compositeTargetWidth = 0;
+    private static int compositeTargetHeight = 0;
 
     private MetalIrisRenderer() {
     }
@@ -138,17 +171,23 @@ public final class MetalIrisRenderer {
      * {@link MTLRenderCommandEncoder}, which properly handles ending any
      * previously active encoder and fence synchronization.
      *
-     * @param device          the Metal device
-     * @param pipeline        the compiled Iris pipeline
-     * @param colorView       the color attachment texture view
-     * @param width           viewport width
-     * @param height          viewport height
+     * @param device     the Metal device
+     * @param pipeline   the compiled Iris pipeline
+     * @param colorView  the color attachment texture view
+     * @param readViews  optional sampler textures to bind to slots 0..readCount-1
+     *                   (e.g. the composite read set for the final pass); may be
+     *                   {@code null} to bind only dummy textures
+     * @param readCount  number of entries in {@code readViews} to bind
+     * @param width      viewport width
+     * @param height     viewport height
      * @return {@code true} if the draw call was issued successfully
      */
     private static boolean renderFullscreenPass(
             final MetalDevice device,
             final MetalIrisPipeline pipeline,
             final MetalGpuTextureView colorView,
+            final MetalGpuTextureView[] readViews,
+            final int readCount,
             final int width,
             final int height
     ) {
@@ -169,15 +208,9 @@ public final class MetalIrisRenderer {
             // Set the Iris pipeline state (no depth for final/composite passes).
             renderEnc.setRenderPipelineState(pipeline.pipelineState(false));
 
-            // Bind dummy textures to slots 0–7. Iris shaders reference
-            // colortex0–7 samplers; without bound textures Metal would
-            // read garbage or crash.
-            MemorySegment dummyTex = getDummyTexture(device);
-            if (!MetalNativeBridge.isNullHandle(dummyTex)) {
-                for (int i = 0; i < MAX_TEXTURE_SLOTS; i++) {
-                    renderEnc.setTexture(dummyTex, i, STAGE_ALL);
-                }
-            }
+            // Bind sampler textures: read views (previous pass output) to the
+            // low slots, dummy texture to the rest.
+            bindSamplerTextures(renderEnc, device, readViews, readCount);
 
             // Draw a fullscreen triangle: 3 vertices, 1 instance.
             // The vertex shader generates positions from vertex_id.
@@ -281,9 +314,15 @@ public final class MetalIrisRenderer {
             return false;
         }
 
-        // Render the fullscreen triangle.
+        // Render the fullscreen triangle. Bind the current composite read set
+        // (the last composite/deferred pass's output) as samplers so the final
+        // pass can tonemap/grade the composited scene. If no composite pass
+        // ran, the read set is null and only dummy textures are bound.
+        MetalGpuTextureView[] compositeReadViews = getCompositeReadViews();
         boolean success = renderFullscreenPass(
-                device, pipeline, renderTargetView, width, height
+                device, pipeline, renderTargetView,
+                compositeReadViews, COMPOSITE_TARGET_COUNT,
+                width, height
         );
 
         if (success) {
@@ -328,6 +367,134 @@ public final class MetalIrisRenderer {
         }
     }
 
+    // ---- Composite ping-pong target pool (M4g) ----
+
+    /**
+     * Ensures the composite ping-pong target pool exists and matches the given
+     * dimensions, recreating the textures if the size changed. Creates two
+     * sets of {@link #COMPOSITE_TARGET_COUNT} RGBA16F textures (render-target
+     * + shader-read), each with a view.
+     */
+    private static void ensureCompositeTargets(final MetalDevice device, final int width, final int height) {
+        if (compositeSetA != null && compositeTargetWidth == width && compositeTargetHeight == height) {
+            return;
+        }
+        releaseCompositeTargets();
+        compositeSetA = new GpuTexture[COMPOSITE_TARGET_COUNT];
+        compositeSetB = new GpuTexture[COMPOSITE_TARGET_COUNT];
+        compositeViewsA = new MetalGpuTextureView[COMPOSITE_TARGET_COUNT];
+        compositeViewsB = new MetalGpuTextureView[COMPOSITE_TARGET_COUNT];
+        int usage = GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_TEXTURE_BINDING;
+        for (int i = 0; i < COMPOSITE_TARGET_COUNT; i++) {
+            compositeSetA[i] = device.createTexture(
+                    "iris_composite_A_colortex" + i, usage,
+                    GpuFormat.RGBA16_FLOAT, width, height, 1, 1);
+            compositeViewsA[i] = (MetalGpuTextureView) device.createTextureView(compositeSetA[i]);
+            compositeSetB[i] = device.createTexture(
+                    "iris_composite_B_colortex" + i, usage,
+                    GpuFormat.RGBA16_FLOAT, width, height, 1, 1);
+            compositeViewsB[i] = (MetalGpuTextureView) device.createTextureView(compositeSetB[i]);
+        }
+        compositeTargetWidth = width;
+        compositeTargetHeight = height;
+        compositeReadIsA = true;
+    }
+
+    /**
+     * Returns the current composite read set views (the previous pass's
+     * output, to be bound as samplers), or {@code null} if the pool is not
+     * initialized.
+     */
+    private static MetalGpuTextureView[] getCompositeReadViews() {
+        if (compositeViewsA == null) {
+            return null;
+        }
+        return compositeReadIsA ? compositeViewsA : compositeViewsB;
+    }
+
+    /**
+     * Returns the current composite write set views (the MRT targets to render
+     * into this pass). The pool must be initialized.
+     */
+    private static MetalGpuTextureView[] getCompositeWriteViews() {
+        return compositeReadIsA ? compositeViewsB : compositeViewsA;
+    }
+
+    /**
+     * Swaps the read and write sets (ping-pong). Called after each composite
+     * pass so the next pass reads this pass's output.
+     */
+    private static void swapCompositeSets() {
+        compositeReadIsA = !compositeReadIsA;
+    }
+
+    /**
+     * Releases all composite pool textures and views (called on resize or
+     * cache clear). The device's deferred-release queue reclaims native
+     * handles safely.
+     */
+    private static void releaseCompositeTargets() {
+        closeViewSet(compositeViewsA, compositeSetA);
+        closeViewSet(compositeViewsB, compositeSetB);
+        compositeViewsA = null;
+        compositeViewsB = null;
+        compositeSetA = null;
+        compositeSetB = null;
+        compositeTargetWidth = 0;
+        compositeTargetHeight = 0;
+    }
+
+    private static void closeViewSet(final MetalGpuTextureView[] views, final GpuTexture[] textures) {
+        if (views != null) {
+            for (MetalGpuTextureView v : views) {
+                if (v != null) {
+                    try {
+                        v.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+        if (textures != null) {
+            for (GpuTexture t : textures) {
+                if (t != null) {
+                    try {
+                        t.close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Binds sampler textures to slots 0–7: the given read views to slots
+     * 0..readCount-1 (the previous pass's colortex output), and the dummy
+     * texture to any remaining slots so unbound samplers don't read garbage.
+     */
+    private static void bindSamplerTextures(
+            final MTLRenderCommandEncoder renderEnc,
+            final MetalDevice device,
+            final MetalGpuTextureView[] readViews,
+            final int readCount
+    ) {
+        int bound = 0;
+        if (readViews != null) {
+            for (int i = 0; i < readCount && i < MAX_TEXTURE_SLOTS; i++) {
+                if (readViews[i] != null) {
+                    renderEnc.setTexture(readViews[i].nativeHandle(), i, STAGE_ALL);
+                    bound++;
+                }
+            }
+        }
+        MemorySegment dummyTex = getDummyTexture(device);
+        if (!MetalNativeBridge.isNullHandle(dummyTex)) {
+            for (int i = bound; i < MAX_TEXTURE_SLOTS; i++) {
+                renderEnc.setTexture(dummyTex, i, STAGE_ALL);
+            }
+        }
+    }
+
     /**
      * Gets or creates a cached {@link MetalIrisPipeline} with multiple color
      * attachments (MRT).
@@ -349,9 +516,9 @@ public final class MetalIrisRenderer {
      * Renders a fullscreen triangle to multiple color attachments (MRT).
      *
      * <p>Uses {@link MetalCommandEncoder#renderCommandEncoderMulti} to create
-     * a render pass with up to 8 color attachments. Dummy textures are bound
-     * to sampler slots 0–7 so reads from unbound colortex samplers don't read
-     * garbage.
+     * a render pass with up to 8 color attachments. The given read views are
+     * bound to sampler slots 0..readCount-1 (the previous pass's output for
+     * composite chaining), and the dummy texture to any remaining slots.
      *
      * @param device      the Metal device
      * @param pipeline    the compiled Iris pipeline (must have been created
@@ -359,6 +526,9 @@ public final class MetalIrisRenderer {
      * @param colorViews  array of color attachment views (entries may be
      *                    {@code null} to leave that slot unbound)
      * @param colorCount  number of entries in {@code colorViews}
+     * @param readViews   optional sampler textures to bind to slots 0..readCount-1
+     *                    (the composite read set); may be {@code null}
+     * @param readCount   number of entries in {@code readViews} to bind
      * @param width       viewport width
      * @param height      viewport height
      * @return {@code true} if the draw call was issued successfully
@@ -368,6 +538,8 @@ public final class MetalIrisRenderer {
             final MetalIrisPipeline pipeline,
             final MetalGpuTextureView[] colorViews,
             final int colorCount,
+            final MetalGpuTextureView[] readViews,
+            final int readCount,
             final int width,
             final int height
     ) {
@@ -383,16 +555,9 @@ public final class MetalIrisRenderer {
 
             renderEnc.setRenderPipelineState(pipeline.pipelineState(false));
 
-            // Bind dummy textures to sampler slots 0–7. Composite/deferred
-            // passes read colortex0–7; without bound textures Metal would
-            // read garbage or crash. (Real read-back of previous pass output
-            // is future work — this validates the MRT write path.)
-            MemorySegment dummyTex = getDummyTexture(device);
-            if (!MetalNativeBridge.isNullHandle(dummyTex)) {
-                for (int i = 0; i < MAX_TEXTURE_SLOTS; i++) {
-                    renderEnc.setTexture(dummyTex, i, STAGE_ALL);
-                }
-            }
+            // Bind sampler textures: read views (previous pass output) to the
+            // low slots, dummy texture to the rest.
+            bindSamplerTextures(renderEnc, device, readViews, readCount);
 
             renderEnc.drawPrimitives(MTLPrimitiveType.Triangle, 0, 3, 1, 0);
 
@@ -406,29 +571,28 @@ public final class MetalIrisRenderer {
     }
 
     /**
-     * Renders an Iris composite/deferred pass to a set of HDR MRT render
-     * targets.
+     * Renders an Iris composite/deferred pass using the persistent ping-pong
+     * target pool (M4g).
      *
-     * <p>This is the M4e entry point for fullscreen passes that write to
-     * multiple colortex outputs (composite1, deferred1, ...). It:
+     * <p>This is the entry point for fullscreen passes that write to multiple
+     * colortex outputs (composite1, deferred1, ...). It:
      * <ol>
-     *   <li>Creates {@code colorAttachmentCount} RGBA16F render target textures</li>
-     *   <li>Gets/creates a cached {@link MetalIrisPipeline} with those formats</li>
-     *   <li>Renders a fullscreen triangle to all attachments</li>
+     *   <li>Ensures the composite target pool exists at the right size</li>
+     *   <li>Binds the current read set (previous pass's output) as samplers</li>
+     *   <li>Renders a fullscreen triangle to the write set (MRT)</li>
+     *   <li>Swaps read/write sets so the next pass reads this pass's output</li>
      * </ol>
      *
-     * <p>The render targets are released immediately after the draw call
-     * (deferred-release is safe — the GPU finishes using them before they're
-     * freed). Real composite chaining (reading previous pass output as
-     * sampler input, ping-ponging between target sets) is future work; this
-     * implementation validates that the MRT draw call executes without crash.
+     * <p>The {@code colorAttachmentCount} parameter is clamped to
+     * {@link #COMPOSITE_TARGET_COUNT}; the pool always allocates that many
+     * targets so every pass sees a consistent MRT layout.
      *
      * @param name                program name (e.g. "composite1", "deferred1")
      * @param vertexMsl           compiled MSL vertex source
      * @param fragmentMsl         compiled MSL fragment source
      * @param width               viewport width
      * @param height              viewport height
-     * @param colorAttachmentCount number of MRT color attachments (1-8)
+     * @param colorAttachmentCount requested MRT color attachments (clamped to pool size)
      * @return {@code true} if the pass rendered successfully
      */
     public static boolean renderCompositePass(
@@ -445,7 +609,10 @@ public final class MetalIrisRenderer {
             return false;
         }
 
-        int count = Math.max(1, Math.min(colorAttachmentCount, MAX_TEXTURE_SLOTS));
+        // The pool size is fixed at COMPOSITE_TARGET_COUNT; ignore a larger
+        // request (and clamp a smaller one up so the MRT layout is consistent
+        // across passes — the pipeline is cached per name+format-array).
+        int count = COMPOSITE_TARGET_COUNT;
         MTLPixelFormat[] formats = new MTLPixelFormat[count];
         Arrays.fill(formats, MTLPixelFormat.RGBA16Float);
 
@@ -457,37 +624,33 @@ public final class MetalIrisRenderer {
             return false;
         }
 
-        GpuTexture[] textures = new GpuTexture[count];
-        MetalGpuTextureView[] colorViews = new MetalGpuTextureView[count];
-        boolean success;
+        // Ensure the ping-pong pool exists (creates/recreates on size change).
         try {
-            for (int i = 0; i < count; i++) {
-                textures[i] = device.createTexture(
-                        "iris_" + name + "_colortex" + i,
-                        GpuTexture.USAGE_RENDER_ATTACHMENT,
-                        GpuFormat.RGBA16_FLOAT,
-                        width, height, 1, 1
-                );
-                GpuTextureView view = device.createTextureView(textures[i]);
-                colorViews[i] = (MetalGpuTextureView) view;
-            }
-            success = renderFullscreenPassMulti(device, pipeline, colorViews, count, width, height);
-        } finally {
-            for (GpuTexture t : textures) {
-                if (t != null) {
-                    // Deferred-release: safe to close immediately, the GPU
-                    // retains the texture until the current command buffer
-                    // finishes execution.
-                    t.close();
-                }
-            }
+            ensureCompositeTargets(device, width, height);
+        } catch (Exception e) {
+            LOGGER.error("[MetalUniversal] Failed to allocate composite targets for '{}'", name, e);
+            return false;
+        }
+
+        MetalGpuTextureView[] readViews = getCompositeReadViews();
+        MetalGpuTextureView[] writeViews = getCompositeWriteViews();
+
+        boolean success = renderFullscreenPassMulti(
+                device, pipeline, writeViews, count, readViews, count, width, height
+        );
+
+        // Ping-pong: the next pass (or the final pass) reads what this pass
+        // just wrote.
+        if (success) {
+            swapCompositeSets();
         }
         return success;
     }
 
     /**
-     * Clears the pipeline cache. Called when the MetalIrisRenderingPipeline is
-     * destroyed (shaderpack reload) to free cached pipeline states.
+     * Clears the pipeline cache and composite target pool. Called when the
+     * MetalIrisRenderingPipeline is destroyed (shaderpack reload) to free
+     * cached pipeline states and HDR render targets.
      */
     public static void clearCache() {
         for (MetalIrisPipeline pipeline : pipelineCache.values()) {
@@ -498,5 +661,6 @@ public final class MetalIrisRenderer {
             }
         }
         pipelineCache.clear();
+        releaseCompositeTargets();
     }
 }
