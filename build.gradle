@@ -21,14 +21,15 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "maven.modrinth:sodium:${project.sodium_version}"
 
-	// Iris is an optional compile-time dependency. MetalUniversal's
-	// MetalIrisBridge references Iris's ShaderType enum to map shader stages
-	// when compiling shaderpack GLSL to Metal. At runtime Iris is optional —
-	// the bridge detects its presence via FabricLoader and stays dormant if
-	// Iris is absent. The glsl-transformer / jcpp / antlr4-runtime libraries
-	// that Iris bundles are not required here because we only reference Iris's
-	// standalone ShaderType enum.
-	modCompileOnly "maven.modrinth:iris:${project.iris_version}"
+	// Iris is intentionally NOT a compile-time dependency here. MetalUniversal's
+	// MetalIrisBridge is fully decoupled from Iris at compile time: it does not
+	// reference any net.irisshaders.iris.* classes, so Iris does not need to be
+	// present on the build classpath. Iris is detected at runtime via
+	// FabricLoader, and shader stages are identified by string name (e.g.
+	// "VERTEX", "FRAGMENT") to avoid a hard type dependency on Iris's
+	// ShaderType enum. Fabric Loom 1.16-SNAPSHOT in this project does not
+	// support the modCompileOnly() configuration method, so adding Iris that
+	// way would break the build.
 }
 
 processResources {

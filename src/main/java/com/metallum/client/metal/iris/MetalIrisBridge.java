@@ -7,6 +7,7 @@ import com.mojang.blaze3d.shaders.ShaderType;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -41,7 +42,14 @@ import java.util.regex.Pattern;
  *       {@code LayoutTransformer} — exactly what SPIR-V requires.</li>
  * </ul>
  *
- * <p>This bridge replicates the layout-location assignment (simplified) so that
+ * <p>This bridge is deliberately decoupled from Iris at compile time: it does
+ * not reference any {@code net.irisshaders.iris.*} classes, so Iris does not
+ * need to be present on the build classpath. Iris is detected at runtime via
+ * {@link FabricLoader}. Shader stages are identified by string name (e.g.
+ * {@code "VERTEX"}, {@code "FRAGMENT"}) to avoid a hard type dependency on
+ * Iris's {@code ShaderType} enum.
+ *
+ * <p>The bridge replicates the layout-location assignment (simplified) so that
  * Iris's desktop GLSL becomes SPIR-V-compatible without needing to modify
  * Iris's compile-time-constant {@code VK_CONFORMANCE} flag.
  */
@@ -88,28 +96,34 @@ public final class MetalIrisBridge {
     }
 
     /**
-     * Compiles an Iris shaderpack GLSL source string to Metal Shading Language.
+     * Compiles a shaderpack GLSL source string to Metal Shading Language.
      *
      * <p>The GLSL is first preprocessed to ensure SPIR-V compatibility (explicit
      * {@code layout(location=N)} on {@code in}/{@code out} variables), then
      * compiled via MetalUniversal's existing GLSL&rarr;SPIR-V&rarr;MSL pipeline.
      *
-     * @param name        debug name for the shader (used in error messages)
-     * @param glslSource  the patched GLSL source from Iris's TransformPatcher
-     * @param irisType    the Iris shader stage type
+     * <p>Shader stage names match Iris's {@code ShaderType} enum names (case-
+     * insensitive): {@code VERTEX}, {@code FRAGMENT}, {@code GEOMETRY},
+     * {@code COMPUTE}, {@code TESSELATION_CONTROL}, {@code TESSELATION_EVAL}.
+     * Only {@code VERTEX} and {@code FRAGMENT} are supported in this beta.
+     *
+     * @param name            debug name for the shader (used in error messages)
+     * @param glslSource      the patched GLSL source from Iris's TransformPatcher
+     * @param shaderStageName the shader stage name (e.g. "VERTEX", "FRAGMENT")
      * @return the compiled MSL shader source plus reflection metadata
      * @throws ShaderCompilationFailedException if compilation fails
+     * @throws UnsupportedOperationException     if the shader stage is unsupported
      */
     public static MslShader compileIrisShader(
             final String name,
             final String glslSource,
-            final net.irisshaders.iris.gl.shader.ShaderType irisType
+            final String shaderStageName
     ) {
         if (!initialized) {
             initialize();
         }
-        final ShaderType mojangType = mapShaderType(irisType);
-        final String cacheKey = name + ":" + irisType + ":" + glslSource.hashCode();
+        final ShaderType mojangType = mapShaderType(shaderStageName);
+        final String cacheKey = name + ":" + shaderStageName + ":" + glslSource.hashCode();
 
         synchronized (shaderCache) {
             MslShader cached = shaderCache.get(cacheKey);
@@ -124,7 +138,7 @@ public final class MetalIrisBridge {
             MslShader result = MetalCrossShaderCompiler.compileGlslToMsl(name, spirvCompatibleGlsl, mojangType);
             Metallum.LOGGER.debug(
                     "[MetalUniversal] Compiled Iris shader '{}' ({}) to MSL ({} chars)",
-                    name, irisType, result.source().length()
+                    name, shaderStageName, result.source().length()
             );
             synchronized (shaderCache) {
                 if (shaderCache.size() >= CACHE_LIMIT) {
@@ -134,7 +148,7 @@ public final class MetalIrisBridge {
             }
             return result;
         } catch (Exception e) {
-            throw new ShaderCompilationFailedException(name, irisType, e);
+            throw new ShaderCompilationFailedException(name, shaderStageName, e);
         }
     }
 
@@ -153,25 +167,23 @@ public final class MetalIrisBridge {
             final String vertexSource,
             final String fragmentSource
     ) {
-        MslShader vertex = compileIrisShader(name + ".vsh", vertexSource,
-                net.irisshaders.iris.gl.shader.ShaderType.VERTEX);
-        MslShader fragment = compileIrisShader(name + ".fsh", fragmentSource,
-                net.irisshaders.iris.gl.shader.ShaderType.FRAGMENT);
+        MslShader vertex = compileIrisShader(name + ".vsh", vertexSource, "VERTEX");
+        MslShader fragment = compileIrisShader(name + ".fsh", fragmentSource, "FRAGMENT");
         return new ShaderPair(vertex, fragment);
     }
 
     /**
-     * Maps Iris's {@link net.irisshaders.iris.gl.shader.ShaderType} to Mojang's
-     * {@link ShaderType}. Only VERTEX and FRAGMENT are supported in this beta;
-     * other stages (geometry, compute, tessellation) will throw.
+     * Maps a shader stage name (matching Iris's {@code ShaderType} enum names)
+     * to Mojang's {@link ShaderType}. Only VERTEX and FRAGMENT are supported in
+     * this beta; other stages will throw.
      */
-    private static ShaderType mapShaderType(final net.irisshaders.iris.gl.shader.ShaderType irisType) {
-        return switch (irisType) {
-            case VERTEX -> ShaderType.VERTEX;
-            case FRAGMENT -> ShaderType.FRAGMENT;
+    private static ShaderType mapShaderType(final String shaderStageName) {
+        return switch (shaderStageName.toUpperCase(Locale.ROOT)) {
+            case "VERTEX" -> ShaderType.VERTEX;
+            case "FRAGMENT" -> ShaderType.FRAGMENT;
             default -> throw new UnsupportedOperationException(
-                    "Metal shader compilation for " + irisType + " is not yet supported in this beta. "
-                            + "Only VERTEX and FRAGMENT shaders are supported. Shader stage: " + irisType
+                    "Metal shader compilation for shader stage '" + shaderStageName
+                            + "' is not yet supported in this beta. Only VERTEX and FRAGMENT are supported."
             );
         };
     }
@@ -239,8 +251,8 @@ public final class MetalIrisBridge {
 
     /** Thrown when Iris GLSL compilation to MSL fails. */
     public static final class ShaderCompilationFailedException extends RuntimeException {
-        ShaderCompilationFailedException(final String name, final net.irisshaders.iris.gl.shader.ShaderType type, final Throwable cause) {
-            super("Failed to compile Iris shader '" + name + "' (" + type + ") to Metal MSL", cause);
+        ShaderCompilationFailedException(final String name, final String shaderStageName, final Throwable cause) {
+            super("Failed to compile Iris shader '" + name + "' (" + shaderStageName + ") to Metal MSL", cause);
         }
     }
 }
