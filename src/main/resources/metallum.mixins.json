@@ -7,9 +7,9 @@
   ],
   "client": [
     "accessor.MetallumGpuDeviceAccessor",
+    "iris.MixinGLDebug",
     "iris.MixinIris",
     "iris.MixinIrisRenderSystem",
-    "iris.MixinRenderSystem_StubCaps",
     "render.PreferredGraphicsApiMixin",
     "sodium.DrawBackendMixin",
     "sodium.DrawContextMixin",

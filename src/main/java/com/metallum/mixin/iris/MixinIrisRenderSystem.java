@@ -6,21 +6,42 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Cancels {@link IrisRenderSystem#initRenderer()} on non-OpenGL backends.
+ * Diverts IrisRenderSystem's OpenGL-dependent paths on non-OpenGL backends.
  *
- * <p>{@code IrisRenderSystem.initRenderer()} performs OpenGL capability
- * detection and allocates GL resources (DSA state, projection matrix buffer,
- * sampler array). On a Metal backend there is no OpenGL context, so these
- * operations would either read meaningless stub values or attempt raw GL calls
- * that crash.
+ * <p>IrisRenderSystem has two crash points on a Metal backend:
+ * <ol>
+ *   <li><b>Static initializer ({@code <clinit>})</b> &mdash; the field
+ *       {@code emptyArray} is initialized via
+ *       {@code new int[SamplerLimits.get().getMaxTextureUnits()]}.
+ *       {@code SamplerLimits}'s constructor calls
+ *       {@link IrisRenderSystem#supportsSSBO()} which reads
+ *       {@code GL.getCapabilities().OpenGL44} &mdash; this throws
+ *       {@code IllegalStateException: No GLCapabilities instance set}
+ *       because there is no OpenGL context on Metal. The {@code <clinit>}
+ *       runs before any method body, so a HEAD injection on
+ *       {@code initRenderer()} alone cannot prevent it.</li>
+ *   <li><b>{@code initRenderer()} method body</b> &mdash; queries
+ *       {@code GL.getCapabilities()} five times for DSA, multibind, compute,
+ *       and tessellation support, and allocates GL sampler state.</li>
+ * </ol>
  *
- * <p>The static initializer ({@code <clinit>}) of {@code IrisRenderSystem}
- * runs before this method body (class loading happens before method execution).
- * The {@code <clinit>} is made safe by {@link MixinRenderSystem_StubCaps}
- * which installs a stub {@code GLCapabilities} beforehand. This mixin then
- * cancels the method body so the GL-dependent init code never runs.
+ * <p>This mixin handles both:
+ * <ul>
+ *   <li>{@code supportsSSBO()} is redirected to return {@code false} on
+ *       non-GL backends. This allows {@code <clinit>} to complete safely:
+ *       {@code SamplerLimits} sets {@code maxShaderStorageUnits = 0} and
+ *       {@code emptyArray} is allocated with a valid size. (The other
+ *       {@code GlStateManager._getInteger} calls in {@code SamplerLimits}'
+ *       constructor do not crash &mdash; they return default values on
+ *       Metal, as confirmed by the crash trace which only fails at
+ *       {@code supportsSSBO()}.)</li>
+ *   <li>{@code initRenderer()} is canceled at HEAD on non-GL backends,
+ *       preventing the five {@code GL.getCapabilities()} reads and GL
+ *       resource allocation in the method body.</li>
+ * </ul>
  *
  * <p>The fields that {@code initRenderer()} would have set
  * ({@code dsaState}, {@code hasMultibind}, {@code supportsCompute},
@@ -30,11 +51,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@code loadShaderpack()}, so Iris's rendering pipeline never activates and
  * these fields are never read.
  *
- * <p>{@code remap = false} because this is Iris's own method (not a Mojang
- * obfuscated method).
+ * <p>{@code remap = false} because these are Iris's own methods (not Mojang
+ * obfuscated methods).
  */
 @Mixin(IrisRenderSystem.class)
 public class MixinIrisRenderSystem {
+    @Inject(method = "supportsSSBO", at = @At("HEAD"), cancellable = true, remap = false)
+    private static void metallum$redirectSupportsSSBOOnNonGl(CallbackInfoReturnable<Boolean> cir) {
+        if (MetalIrisBridge.isNonGlBackend()) {
+            cir.setReturnValue(false);
+        }
+    }
+
     @Inject(method = "initRenderer", at = @At("HEAD"), cancellable = true, remap = false)
     private static void metallum$cancelInitRendererOnNonGl(CallbackInfo ci) {
         if (MetalIrisBridge.isNonGlBackend()) {

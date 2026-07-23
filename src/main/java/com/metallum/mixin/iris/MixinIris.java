@@ -25,9 +25,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>This mixin cancels both methods at their HEAD when
  * {@link MetalIrisBridge#isNonGlBackend()} returns {@code true}. The remaining
- * init calls in Iris's sequence ({@code GLDebug.reloadDebugState()},
- * {@code IrisRenderSystem.initRenderer()}, {@code IrisSamplers.initRenderer()})
- * are either safe with the stub GLCapabilities or handled by other mixins.
+ * init calls in Iris's sequence are handled by companion mixins:
+ * {@code GLDebug.reloadDebugState()} is canceled by {@link MixinGLDebug},
+ * and {@code IrisRenderSystem.initRenderer()} (whose {@code <clinit>} and
+ * method body both make GL calls) is handled by {@link MixinIrisRenderSystem}.
+ * {@code IrisSamplers.initRenderer()} is empty and safe.
  *
  * <p>On a real OpenGL backend this mixin is a no-op: {@code isNonGlBackend()}
  * returns {@code false} and Iris initializes normally.
