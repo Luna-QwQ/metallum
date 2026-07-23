@@ -5,6 +5,10 @@ import com.metallum.client.metal.render.mtl.MTLCompareFunction;
 import com.metallum.client.metal.render.mtl.MTLPixelFormat;
 import com.metallum.client.metal.render.mtl.MTLRenderPipelineDescriptor;
 import com.metallum.client.metal.render.mtl.MTLVertexDescriptor;
+import com.metallum.client.metal.render.mtl.MTLVertexFormat;
+import com.metallum.client.metal.render.mtl.MTLVertexStepFunction;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormatElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,10 +32,11 @@ import java.util.regex.Pattern;
  *       {@code MTLFunction} handles via
  *       {@link MetalDevice#getOrCompileFunction}.</li>
  *   <li>Create an {@link MTLRenderPipelineDescriptor}, set the compiled
- *       functions, an empty {@link MTLVertexDescriptor} (no vertex buffers —
- *       Iris composite/final programs generate fullscreen positions from
- *       {@code vertex_id} in the vertex shader), and the color/depth pixel
- *       formats.</li>
+ *       functions, a {@link MTLVertexDescriptor}, and the color/depth pixel
+ *       formats. The vertex descriptor is empty (no vertex buffers) for
+ *       fullscreen passes (composite/final generate positions from
+ *       {@code vertex_id}), or a real descriptor matching the terrain vertex
+ *       format for gbuffers/shadow passes (M5a).</li>
  *   <li>Call {@link MetalNativeBridge#metallum_MTLDevice_makeRenderPipelineState}
  *       to create the native {@code MTLRenderPipelineState} handle.</li>
  * </ol>
@@ -40,6 +45,17 @@ import java.util.regex.Pattern;
  * ({@code Depth32Float}) and one without ({@code Invalid}), matching the
  * pattern in {@link MetalCompiledRenderPipeline}. The correct one is selected
  * at draw time via {@link #pipelineState(boolean)}.
+ *
+ * <h2>M5a — Vertex descriptor support</h2>
+ * The {@link #MetalIrisPipeline(MetalDevice, String, String, String, MTLPixelFormat[], boolean, VertexFormat[])}
+ * constructor accepts a {@code VertexFormat[]} and builds a real
+ * {@link MTLVertexDescriptor} via {@link #buildVertexDescriptor}, mirroring
+ * {@code MetalCompiledRenderPipeline.buildVertexDescriptor}. This lets
+ * gbuffers/shadow pipelines bind vertex buffers (terrain, entities) with proper
+ * attribute layout. The {@link #vertexBufferCount()} and
+ * {@link #firstAvailableVertexBufferSlot()} getters expose the descriptor's
+ * layout so the draw path (M5c) can bind vertex buffers to the correct Metal
+ * slots.
  */
 final class MetalIrisPipeline implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("MetalUniversal");
@@ -53,6 +69,20 @@ final class MetalIrisPipeline implements AutoCloseable {
     private final MemorySegment pipelineWithDepth;
     private final MemorySegment pipelineWithoutDepth;
     private final MemorySegment depthStencilState;
+    /**
+     * Number of vertex buffer bindings declared by the vertex descriptor
+     * (M5a). Zero for fullscreen passes (no vertex buffers); positive for
+     * gbuffers/shadow passes that bind a real {@link VertexFormat}.
+     */
+    private final int vertexBufferCount;
+    /**
+     * The first Metal buffer index used for vertex-buffer binding (M5a).
+     * Vertex buffer {@code i} is bound to Metal slot
+     * {@code firstAvailableVertexBufferSlot + i}. For Iris gbuffers this is 0
+     * (Iris MSL does not reserve vertex-stage UBO slots before vertex buffers
+     * the way vanilla pipelines do).
+     */
+    private final int firstAvailableVertexBufferSlot;
     private boolean closed;
 
     /**
@@ -80,6 +110,12 @@ final class MetalIrisPipeline implements AutoCloseable {
      * Used by Iris gbuffer/composite/deferred passes that write to multiple
      * colortex outputs simultaneously.
      *
+     * <p>This constructor uses an <b>empty</b> {@link MTLVertexDescriptor} (no
+     * vertex buffers) — appropriate for fullscreen passes (composite/deferred/
+     * final) whose vertex shaders generate positions from {@code vertex_id}.
+     * For gbuffers/shadow passes that bind real vertex buffers, use
+     * {@link #MetalIrisPipeline(MetalDevice, String, String, String, MTLPixelFormat[], boolean, VertexFormat[])}.
+     *
      * @param colorFormats   array of color attachment pixel formats (1-8);
      *                       index 0 is the primary attachment
      * @param hasDepth       whether a depth attachment will be used
@@ -91,6 +127,34 @@ final class MetalIrisPipeline implements AutoCloseable {
             final String fragmentMsl,
             final MTLPixelFormat[] colorFormats,
             final boolean hasDepth
+    ) {
+        this(device, name, vertexMsl, fragmentMsl, colorFormats, hasDepth, null);
+    }
+
+    /**
+     * Multi-render-target constructor with an explicit vertex descriptor
+     * (M5a). Used by Iris gbuffers/shadow passes that bind real vertex buffers
+     * (terrain, entities) — the vertex shader reads per-vertex attributes
+     * (position, color, UV, lightmap, normal) from bound vertex buffers instead
+     * of generating positions from {@code vertex_id}.
+     *
+     * <p>When {@code vertexFormats} is {@code null} or empty, an empty
+     * {@link MTLVertexDescriptor} is used (same as the fullscreen path). When
+     * non-null, a real descriptor is built matching the vanilla/Sodium terrain
+     * vertex layout, mirroring the logic in
+     * {@code MetalCompiledRenderPipeline.buildVertexDescriptor}.
+     *
+     * @param vertexFormats  the vertex format bindings (one per vertex buffer
+     *                       slot), or {@code null} for fullscreen passes
+     */
+    MetalIrisPipeline(
+            final MetalDevice device,
+            final String name,
+            final String vertexMsl,
+            final String fragmentMsl,
+            final MTLPixelFormat[] colorFormats,
+            final boolean hasDepth,
+            final VertexFormat[] vertexFormats
     ) {
         this.name = name;
 
@@ -107,18 +171,25 @@ final class MetalIrisPipeline implements AutoCloseable {
             throw new IllegalStateException("Failed to compile Iris fragment MSL function for '" + name + "'");
         }
 
+        // Iris MSL (cross-compiled from GLSL via SPIR-V) declares vertex
+        // attributes at buffer indices starting from 0 — unlike vanilla
+        // pipelines, there are no vertex-stage UBOs reserved before the vertex
+        // buffers. So firstAvailableVertexBufferSlot = 0.
+        this.firstAvailableVertexBufferSlot = 0;
+        this.vertexBufferCount = countVertexBuffers(vertexFormats);
+
         this.pipelineWithDepth = hasDepth
-                ? createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Depth32Float)
+                ? createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Depth32Float, vertexFormats, this.firstAvailableVertexBufferSlot)
                 : MemorySegment.NULL;
-        this.pipelineWithoutDepth = createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Invalid);
+        this.pipelineWithoutDepth = createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Invalid, vertexFormats, this.firstAvailableVertexBufferSlot);
 
         this.depthStencilState = hasDepth
                 ? MetalNativeBridge.MTLDevice_makeDepthStencilState(
                         device.metalDeviceHandle(), MTLCompareFunction.Always, 0)
                 : MemorySegment.NULL;
 
-        LOGGER.info("[MetalUniversal] MetalIrisPipeline '{}' created (colorAttachments={}, hasDepth={})",
-                name, colorFormats.length, hasDepth);
+        LOGGER.info("[MetalUniversal] MetalIrisPipeline '{}' created (colorAttachments={}, hasDepth={}, vertexBuffers={})",
+                name, colorFormats.length, hasDepth, this.vertexBufferCount);
     }
 
     private static MemorySegment createPipelineState(
@@ -126,14 +197,17 @@ final class MetalIrisPipeline implements AutoCloseable {
             final MemorySegment vertexFn,
             final MemorySegment fragmentFn,
             final MTLPixelFormat[] colorFormats,
-            final MTLPixelFormat depthFormat
+            final MTLPixelFormat depthFormat,
+            final VertexFormat[] vertexFormats,
+            final int firstMetalVertexBufferSlot
     ) {
         try (MTLRenderPipelineDescriptor desc = new MTLRenderPipelineDescriptor()) {
             desc.setCompiledFunctions(vertexFn, fragmentFn);
-            // Empty vertex descriptor: no vertex buffers, no attributes.
-            // Iris composite/final vertex shaders use vertex_id to generate
-            // fullscreen triangle positions.
-            try (MTLVertexDescriptor vertexDesc = new MTLVertexDescriptor()) {
+            // Build the vertex descriptor: empty for fullscreen passes (no
+            // vertex buffers — vertex_id generates positions), or a real
+            // descriptor matching the terrain vertex format for gbuffers/
+            // shadow passes (M5a).
+            try (MTLVertexDescriptor vertexDesc = buildVertexDescriptor(vertexFormats, firstMetalVertexBufferSlot)) {
                 desc.setVertexDescriptor(vertexDesc);
             }
             // Attachment 0 + depth + stencil via the existing single call
@@ -154,6 +228,75 @@ final class MetalIrisPipeline implements AutoCloseable {
             }
             return pipeline;
         }
+    }
+
+    /**
+     * Counts the number of non-null, non-empty vertex format bindings (M5a).
+     * Returns 0 when {@code vertexFormats} is {@code null} (fullscreen path).
+     */
+    private static int countVertexBuffers(final VertexFormat[] vertexFormats) {
+        if (vertexFormats == null) {
+            return 0;
+        }
+        int count = 0;
+        for (VertexFormat format : vertexFormats) {
+            if (format != null && !format.getElements().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Builds a {@link MTLVertexDescriptor} from the given vertex format
+     * bindings (M5a). Mirrors the logic in
+     * {@code MetalCompiledRenderPipeline.buildVertexDescriptor}:
+     * <ul>
+     *   <li>Each non-null, non-empty {@link VertexFormat} at index {@code i}
+     *       gets a Metal buffer layout at slot
+     *       {@code firstMetalVertexBufferSlot + i}.</li>
+     *   <li>Attribute indices are flat-monotonic across all bindings (they
+     *       don't restart per binding).</li>
+     *   <li>{@code stepRate > 0} → {@link MTLVertexStepFunction#PerInstance},
+     *       otherwise {@link MTLVertexStepFunction#PerVertex}.</li>
+     * </ul>
+     * Returns an empty descriptor (no attributes, no layouts) when
+     * {@code vertexFormats} is {@code null} or empty — for fullscreen passes.
+     */
+    private static MTLVertexDescriptor buildVertexDescriptor(
+            final VertexFormat[] vertexFormats,
+            final int firstMetalVertexBufferSlot
+    ) {
+        MTLVertexDescriptor vertexDesc = new MTLVertexDescriptor();
+        if (vertexFormats == null) {
+            return vertexDesc;
+        }
+        long attrIndex = 0;
+        for (int i = 0; i < vertexFormats.length; i++) {
+            VertexFormat binding = vertexFormats[i];
+            if (binding == null || binding.getElements().isEmpty()) {
+                continue;
+            }
+
+            int metalSlot = firstMetalVertexBufferSlot + i;
+
+            long stride = binding.getVertexSize();
+            long stepRate = binding.getStepRate();
+            MTLVertexStepFunction stepFunction = stepRate > 0
+                    ? MTLVertexStepFunction.PerInstance
+                    : MTLVertexStepFunction.PerVertex;
+            vertexDesc.setLayout(metalSlot, stride, stepFunction, stepRate > 0 ? stepRate : 1);
+
+            for (VertexFormatElement element : binding.getElements()) {
+                MTLVertexFormat format = MTLVertexFormat.from(element.format());
+                if (format == MTLVertexFormat.Invalid) {
+                    throw new IllegalStateException("Unsupported vertex attribute format: " + element.format());
+                }
+                vertexDesc.setAttribute(attrIndex, format.value, element.offset(), metalSlot);
+                attrIndex++;
+            }
+        }
+        return vertexDesc;
     }
 
     private static String extractEntryPoint(final String msl, final Pattern pattern, final String fallback) {
@@ -177,6 +320,24 @@ final class MetalIrisPipeline implements AutoCloseable {
 
     boolean hasDepth() {
         return depthStencilState != MemorySegment.NULL;
+    }
+
+    /**
+     * Returns the number of vertex buffer bindings declared by the vertex
+     * descriptor (M5a). Zero for fullscreen passes; positive for gbuffers/
+     * shadow passes with a real {@link VertexFormat}.
+     */
+    int vertexBufferCount() {
+        return this.vertexBufferCount;
+    }
+
+    /**
+     * Returns the first Metal buffer index used for vertex-buffer binding
+     * (M5a). Vertex buffer {@code i} is bound to Metal slot
+     * {@code firstAvailableVertexBufferSlot + i}. Always 0 for Iris pipelines.
+     */
+    int firstAvailableVertexBufferSlot() {
+        return this.firstAvailableVertexBufferSlot;
     }
 
     @Override

@@ -567,7 +567,7 @@ public final class MetalIrisRenderer {
 
     /**
      * Gets or creates a cached {@link MetalIrisPipeline} with multiple color
-     * attachments (MRT).
+     * attachments (MRT). Uses an empty vertex descriptor (fullscreen path).
      */
     private static MetalIrisPipeline getOrCreatePipelineMulti(
             final MetalDevice device,
@@ -579,6 +579,35 @@ public final class MetalIrisRenderer {
     ) {
         return pipelineCache.computeIfAbsent(name, n -> new MetalIrisPipeline(
                 device, n, vertexMsl, fragmentMsl, colorFormats, hasDepth
+        ));
+    }
+
+    /**
+     * Gets or creates a cached {@link MetalIrisPipeline} with multiple color
+     * attachments (MRT) and a real vertex descriptor (M5a). Used by gbuffers/
+     * shadow passes that bind vertex buffers.
+     *
+     * <p>The cache key is {@code name} alone — if the same program name is
+     * first created as a fullscreen pipeline (no vertex format) and later
+     * requested with a vertex format, the cached fullscreen pipeline is
+     * returned. Callers should use distinct program names for fullscreen vs
+     * geometry pipelines (Iris already does: "composite1" vs
+     * "gbuffers_terrain").
+     *
+     * @param vertexFormats  the vertex format bindings, or {@code null} for
+     *                       an empty vertex descriptor (fullscreen path)
+     */
+    private static MetalIrisPipeline getOrCreatePipelineMulti(
+            final MetalDevice device,
+            final String name,
+            final String vertexMsl,
+            final String fragmentMsl,
+            final MTLPixelFormat[] colorFormats,
+            final boolean hasDepth,
+            final com.mojang.blaze3d.vertex.VertexFormat[] vertexFormats
+    ) {
+        return pipelineCache.computeIfAbsent(name, n -> new MetalIrisPipeline(
+                device, n, vertexMsl, fragmentMsl, colorFormats, hasDepth, vertexFormats
         ));
     }
 
@@ -918,6 +947,29 @@ public final class MetalIrisRenderer {
             final int width,
             final int height
     ) {
+        return beginGeometryPass(name, vertexMsl, fragmentMsl, width, height, null);
+    }
+
+    /**
+     * Begins an Iris gbuffers geometry pass with an explicit vertex format
+     * (M5a). When {@code vertexFormats} is non-null, the pipeline is created
+     * with a real {@code MTLVertexDescriptor} matching the terrain vertex
+     * layout, so the caller can bind vertex buffers and issue indexed draws.
+     *
+     * @param vertexFormats  the vertex format bindings (one per vertex buffer
+     *                       slot), or {@code null} for an empty vertex
+     *                       descriptor (no vertex attributes — not useful for
+     *                       geometry passes but kept for API symmetry)
+     * @see #beginGeometryPass(String, String, String, int, int)
+     */
+    public static MTLRenderCommandEncoder beginGeometryPass(
+            final String name,
+            final String vertexMsl,
+            final String fragmentMsl,
+            final int width,
+            final int height,
+            final com.mojang.blaze3d.vertex.VertexFormat[] vertexFormats
+    ) {
         MetalDevice device = getMetalDevice();
         if (device == null) {
             LOGGER.warn("[MetalUniversal] Cannot begin geometry pass '{}': MetalDevice not available", name);
@@ -929,7 +981,7 @@ public final class MetalIrisRenderer {
 
         MetalIrisPipeline pipeline;
         try {
-            pipeline = getOrCreatePipelineMulti(device, name, vertexMsl, fragmentMsl, colorFormats, true);
+            pipeline = getOrCreatePipelineMulti(device, name, vertexMsl, fragmentMsl, colorFormats, true, vertexFormats);
         } catch (Exception e) {
             LOGGER.error("[MetalUniversal] Failed to create gbuffers pipeline for '{}'", name, e);
             return null;
@@ -957,8 +1009,8 @@ public final class MetalIrisRenderer {
                 renderEnc.setDepthStencilState(pipeline.depthStencilState());
             }
 
-            LOGGER.info("[MetalUniversal] Began geometry pass '{}' ({} MRT attachments, {}x{})",
-                    name, GBUFFER_MRT_COUNT, width, height);
+            LOGGER.info("[MetalUniversal] Began geometry pass '{}' ({} MRT attachments, {}x{}, vertexBuffers={})",
+                    name, GBUFFER_MRT_COUNT, width, height, pipeline.vertexBufferCount());
             return renderEnc;
         } catch (Throwable t) {
             LOGGER.error("[MetalUniversal] Failed to begin geometry pass '{}'", name, t);
@@ -1001,6 +1053,22 @@ public final class MetalIrisRenderer {
             final String vertexMsl,
             final String fragmentMsl
     ) {
+        return beginShadowPass(name, vertexMsl, fragmentMsl, null);
+    }
+
+    /**
+     * Begins an Iris shadow pass with an explicit vertex format (M5a).
+     *
+     * @param vertexFormats  the vertex format bindings, or {@code null} for an
+     *                       empty vertex descriptor
+     * @see #beginShadowPass(String, String, String)
+     */
+    public static MTLRenderCommandEncoder beginShadowPass(
+            final String name,
+            final String vertexMsl,
+            final String fragmentMsl,
+            final com.mojang.blaze3d.vertex.VertexFormat[] vertexFormats
+    ) {
         MetalDevice device = getMetalDevice();
         if (device == null) {
             LOGGER.warn("[MetalUniversal] Cannot begin shadow pass '{}': MetalDevice not available", name);
@@ -1012,7 +1080,7 @@ public final class MetalIrisRenderer {
         try {
             pipeline = getOrCreatePipelineMulti(
                     device, name, vertexMsl, fragmentMsl,
-                    new MTLPixelFormat[]{MTLPixelFormat.RGBA8Unorm}, true);
+                    new MTLPixelFormat[]{MTLPixelFormat.RGBA8Unorm}, true, vertexFormats);
         } catch (Exception e) {
             LOGGER.error("[MetalUniversal] Failed to create shadow pipeline for '{}'", name, e);
             return null;
@@ -1040,8 +1108,8 @@ public final class MetalIrisRenderer {
                 renderEnc.setDepthStencilState(pipeline.depthStencilState());
             }
 
-            LOGGER.info("[MetalUniversal] Began shadow pass '{}' ({}x{})",
-                    name, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+            LOGGER.info("[MetalUniversal] Began shadow pass '{}' ({}x{}, vertexBuffers={})",
+                    name, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, pipeline.vertexBufferCount());
             return renderEnc;
         } catch (Throwable t) {
             LOGGER.error("[MetalUniversal] Failed to begin shadow pass '{}'", name, t);
