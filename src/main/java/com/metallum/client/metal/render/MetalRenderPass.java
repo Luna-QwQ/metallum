@@ -572,6 +572,12 @@ final class MetalRenderPass implements RenderPassBackend {
                     pushDescriptor(enc, binding);
                 }
             }
+        } else if (irisPipeline != null) {
+            // M5d-2: bind reflected Iris UBO slots (textures/samplers are M5d-3).
+            // The swap stays gated off by MetalIrisRenderer.pipelineSwapEnabled
+            // (default false) until M5d-3, so this branch is infrastructure that
+            // does not execute in M5d-2.
+            pushIrisUniformBindings(enc, irisPipeline);
         }
 
         dirtyDescriptorMask = 0L;
@@ -691,6 +697,47 @@ final class MetalRenderPass implements RenderPassBackend {
 
         enc.setTexture(texelTexture, binding.bindingIndex(), binding.stageMask());
         commandEncoder.queueForDestroy(() -> MetalNativeBridge.metallum_release_object(texelTexture));
+    }
+
+    /**
+     * Binds reflected Iris MSL UBO slots (M5d-2). For each reflected
+     * {@link MetalIrisPipeline.IrisResourceBinding} of kind
+     * {@link MetalIrisPipeline.IrisResourceKind#UNIFORM_BUFFER}, binds the
+     * matching {@link #uniforms} entry if one was provided via
+     * {@link #setUniform}; otherwise binds the device's zeroed scratch uniform
+     * buffer so the MSL's {@code [[buffer(N)]]} argument is never left unbound.
+     *
+     * <p>Texture and sampler bindings are reflected but intentionally skipped
+     * here — they are bound in M5d-3. The pipeline swap remains gated off
+     * ({@code MetalIrisRenderer.pipelineSwapEnabled == false}) until M5d-3, so
+     * this path does not execute in M5d-2; it is infrastructure for the M5d-3
+     * enable.
+     *
+     * <p>Dirtiness tracking is not yet implemented — all reflected UBOs are
+     * re-bound on every {@link #bindDrawState} call while the Iris override is
+     * active. This is correct (idempotent) and can be optimized later.
+     */
+    private void pushIrisUniformBindings(final MTLRenderCommandEncoder enc, final MetalIrisPipeline iris) {
+        final MetalGpuBuffer scratch = device.getOrEnsureIrisScratchUniformBuffer();
+        for (MetalIrisPipeline.IrisResourceBinding binding : iris.bindings()) {
+            if (binding.kind() != MetalIrisPipeline.IrisResourceKind.UNIFORM_BUFFER) {
+                continue;
+            }
+            final GpuBufferSlice slice = uniforms.get(binding.name());
+            if (slice != null && !slice.buffer().isClosed()) {
+                enc.setBuffer(
+                        ((MetalGpuBuffer) slice.buffer()).nativeHandle(),
+                        slice.offset(),
+                        binding.bindingIndex(),
+                        binding.stageMask());
+            } else {
+                enc.setBuffer(
+                        scratch.nativeHandle(),
+                        0L,
+                        binding.bindingIndex(),
+                        binding.stageMask());
+            }
+        }
     }
 
     record TextureViewAndSampler(GpuTextureView textureView, GpuSampler sampler) {

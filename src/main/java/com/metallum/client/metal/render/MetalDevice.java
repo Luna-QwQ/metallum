@@ -32,6 +32,13 @@ import java.util.regex.Pattern;
 final class MetalDevice implements GpuDeviceBackend {
     private static final Pattern BLOCK_COMMENTS = Pattern.compile("(?s)/\\*.*?\\*/");
     private static final Pattern LINE_COMMENTS = Pattern.compile("(?m)//[^\\n]*");
+    /**
+     * Size of the lazily-allocated Iris scratch uniform buffer (M5d-2). Large
+     * enough to cover typical Iris UBO structs (e.g. {@code iris_LooseUniforms})
+     * so unprovided UBO slots read zero instead of trapping on an undersized
+     * binding.
+     */
+    private static final int IRIS_SCRATCH_UNIFORM_SIZE = 1 << 14; // 16 KiB
     private final MemorySegment metalDeviceHandle;
     private final MemorySegment metalLayer;
     private final MemorySegment cocoaView;
@@ -43,6 +50,15 @@ final class MetalDevice implements GpuDeviceBackend {
     private final Map<ShaderCompilationKey, IntermediaryShaderModule> shaderCache = new HashMap<>();
     private final Map<MslFunctionKey, MemorySegment> functionCache = new HashMap<>();
     private ShaderSource activeShaderSource;
+    /**
+     * Lazily-allocated, zeroed uniform buffer used to satisfy Iris MSL
+     * {@code [[buffer(N)]]} UBO slots that have no provided uniform value yet
+     * (M5d-2). Bound by {@code MetalRenderPass.pushIrisUniformBindings} so the
+     * Iris MSL never reads from an unbound buffer when the pipeline swap is
+     * active. Real Iris uniform data replaces this in a later milestone.
+     */
+    @Nullable
+    private MetalGpuBuffer irisScratchUniformBuffer;
 
     MetalDevice(
             final ShaderSource defaultShaderSource,
@@ -177,6 +193,10 @@ final class MetalDevice implements GpuDeviceBackend {
         this.waitForSubmittedGpuWork();
         this.commandEncoder.close();
         this.clearPipelineCache();
+        if (this.irisScratchUniformBuffer != null) {
+            this.irisScratchUniformBuffer.close();
+            this.irisScratchUniformBuffer = null;
+        }
         try {
             MetalNativeBridge.metallum_NSView_clearLayer(this.cocoaView);
         } catch (Throwable ignored) {
@@ -202,6 +222,29 @@ final class MetalDevice implements GpuDeviceBackend {
 
     MemorySegment metalDeviceHandle() {
         return this.metalDeviceHandle;
+    }
+
+    /**
+     * Returns the lazily-allocated Iris scratch uniform buffer (M5d-2): a
+     * zeroed, CPU-mapped {@link MetalGpuBuffer} used to bind Iris MSL UBO slots
+     * that have no provided uniform value. The buffer is device-scoped (created
+     * once, released in {@link #close()}) so it is not reallocated per render
+     * pass. Its contents are zeroed once at creation.
+     */
+    MetalGpuBuffer getOrEnsureIrisScratchUniformBuffer() {
+        MetalGpuBuffer buffer = this.irisScratchUniformBuffer;
+        if (buffer == null || buffer.isClosed()) {
+            buffer = (MetalGpuBuffer) this.createBuffer(
+                    () -> "iris_scratch_uniform",
+                    GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_COPY_DST,
+                    IRIS_SCRATCH_UNIFORM_SIZE);
+            final ByteBuffer storage = buffer.currentStorage();
+            for (int i = 0; i < IRIS_SCRATCH_UNIFORM_SIZE; i++) {
+                storage.put(i, (byte) 0);
+            }
+            this.irisScratchUniformBuffer = buffer;
+        }
+        return buffer;
     }
 
     void waitForSubmittedGpuWork() {

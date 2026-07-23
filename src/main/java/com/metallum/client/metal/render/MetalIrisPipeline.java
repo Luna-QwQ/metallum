@@ -16,6 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.foreign.MemorySegment;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,6 +75,21 @@ import java.util.regex.Pattern;
  * binding for the Iris MSL is added in M5d-2/M5d-3; until then the swap is
  * gated off by {@code MetalIrisRenderer.pipelineSwapEnabled} (default false) so
  * vanilla rendering is unaffected.
+ *
+ * <h2>M5d-2 — MSL binding reflection</h2>
+ * The constructor regex-parses the compiled vertex/fragment MSL source for
+ * {@code [[buffer(N)]]} / {@code [[texture(N)]]} / {@code [[sampler(N)]]}
+ * attributes (SPIRV-Cross emits these because
+ * {@code SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING} is enabled) and
+ * builds a list of {@link IrisResourceBinding}s exposed via {@link #bindings()}.
+ * Vertex inputs use {@code [[attribute(N)]]} / {@code [[stage_in]]} (see
+ * {@code MetalCrossShaderCompiler.registerIntegerInputConversions}), so
+ * {@code [[buffer(N)]]} in the MSL is exclusively UBOs and push-constants —
+ * vertex buffers (configured via {@link MTLVertexDescriptor}) never appear as
+ * {@code [[buffer(N)]]}, which makes the regex parse safe.
+ * {@code MetalRenderPass.bindDrawState} uses the reflected UBO bindings to bind
+ * Iris uniform buffers when the pipeline swap is active (M5d-2); texture/sampler
+ * bindings are reflected now but bound in M5d-3.
  */
 final class MetalIrisPipeline implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger("MetalUniversal");
@@ -80,6 +98,45 @@ final class MetalIrisPipeline implements AutoCloseable {
             Pattern.compile("\\bvertex\\s+\\w+\\s+(\\w+)\\s*\\(");
     private static final Pattern FRAGMENT_ENTRY_PATTERN =
             Pattern.compile("\\bfragment\\s+\\w+\\s+(\\w+)\\s*\\(");
+
+    /**
+     * Matches an MSL resource attribute of the form {@code NAME [[kind(N)]]},
+     * capturing the variable name and the binding index. The optional
+     * {@code (?:\[[^\]]*\]\s*)*} skips array dimensions between the name and
+     * the attribute (e.g. {@code tex[2] [[texture(0)]]}). Used to reflect the
+     * {@code [[buffer(N)]]} / {@code [[texture(N)]]} / {@code [[sampler(N)]]}
+     * attributes SPIRV-Cross emits when
+     * {@code SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING} is on.
+     */
+    private static final Pattern MSL_BUFFER_BINDING_PATTERN =
+            Pattern.compile("(\\w+)\\s*(?:\\[[^\\]]*\\]\\s*)*\\[\\[buffer\\((\\d+)\\)\\]\\]");
+    private static final Pattern MSL_TEXTURE_BINDING_PATTERN =
+            Pattern.compile("(\\w+)\\s*(?:\\[[^\\]]*\\]\\s*)*\\[\\[texture\\((\\d+)\\)\\]\\]");
+    private static final Pattern MSL_SAMPLER_BINDING_PATTERN =
+            Pattern.compile("(\\w+)\\s*(?:\\[[^\\]]*\\]\\s*)*\\[\\[sampler\\((\\d+)\\)\\]\\]");
+
+    /**
+     * Kind of a reflected MSL resource binding (M5d-2). Mirrors the distinction
+     * SPIRV-Cross makes when emitting MSL {@code [[buffer(N)]]} /
+     * {@code [[texture(N)]]} / {@code [[sampler(N)]]} attributes.
+     */
+    enum IrisResourceKind {
+        UNIFORM_BUFFER,
+        TEXTURE,
+        SAMPLER
+    }
+
+    /**
+     * A single reflected MSL resource binding (M5d-2). {@code stageMask} uses
+     * the {@link MetalCompiledRenderPipeline#STAGE_VERTEX} /
+     * {@link MetalCompiledRenderPipeline#STAGE_FRAGMENT} bits so the draw path
+     * can bind the resource to the correct stage(s). Metal vertex and fragment
+     * buffer/texture/sampler index tables are independent, so two resources
+     * sharing an index but appearing in different stages are kept as separate
+     * bindings (each bound with its own stage mask).
+     */
+    record IrisResourceBinding(IrisResourceKind kind, String name, int bindingIndex, int stageMask) {
+    }
 
     private final String name;
     private final MemorySegment pipelineWithDepth;
@@ -113,6 +170,15 @@ final class MetalIrisPipeline implements AutoCloseable {
     private final MTLPrimitiveType topology = MTLPrimitiveType.Triangle;
     private final float depthBiasConstant = 0.0f;
     private final float depthBiasScaleFactor = 0.0f;
+    /**
+     * Reflected MSL resource bindings (M5d-2). Built once at construction by
+     * {@link #reflectBindings} regex-parsing the vertex/fragment MSL for
+     * {@code [[buffer(N)]]} / {@code [[texture(N)]]} / {@code [[sampler(N)]]}
+     * attributes. Consumed by {@code MetalRenderPass.bindDrawState} to bind
+     * Iris UBOs (M5d-2) and textures/samplers (M5d-3) when the pipeline swap
+     * is enabled.
+     */
+    private final List<IrisResourceBinding> bindings;
     private boolean closed;
 
     /**
@@ -207,6 +273,7 @@ final class MetalIrisPipeline implements AutoCloseable {
         // buffers. So firstAvailableVertexBufferSlot = 0.
         this.firstAvailableVertexBufferSlot = 0;
         this.vertexBufferCount = countVertexBuffers(vertexFormats);
+        this.bindings = reflectBindings(vertexMsl, fragmentMsl);
 
         this.pipelineWithDepth = hasDepth
                 ? createPipelineState(device, vertexFn, fragmentFn, colorFormats, MTLPixelFormat.Depth32Float, vertexFormats, this.firstAvailableVertexBufferSlot)
@@ -218,8 +285,8 @@ final class MetalIrisPipeline implements AutoCloseable {
                         device.metalDeviceHandle(), MTLCompareFunction.Always, 0)
                 : MemorySegment.NULL;
 
-        LOGGER.info("[MetalUniversal] MetalIrisPipeline '{}' created (colorAttachments={}, hasDepth={}, vertexBuffers={})",
-                name, colorFormats.length, hasDepth, this.vertexBufferCount);
+        LOGGER.info("[MetalUniversal] MetalIrisPipeline '{}' created (colorAttachments={}, hasDepth={}, vertexBuffers={}, bindings={})",
+                name, colorFormats.length, hasDepth, this.vertexBufferCount, this.bindings.size());
     }
 
     private static MemorySegment createPipelineState(
@@ -334,6 +401,66 @@ final class MetalIrisPipeline implements AutoCloseable {
         return matcher.find() ? matcher.group(1) : fallback;
     }
 
+    /**
+     * Reflects MSL resource bindings by regex-parsing the compiled vertex and
+     * fragment MSL source for {@code [[buffer(N)]]} / {@code [[texture(N)]]} /
+     * {@code [[sampler(N)]]} attributes (M5d-2).
+     *
+     * <p>SPIRV-Cross is configured with
+     * {@code SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING = true}, so the
+     * compiled MSL carries explicit binding indices in these attributes. Vertex
+     * inputs use {@code [[attribute(N)]]} / {@code [[stage_in]]} (not
+     * {@code [[buffer(N)]]}), so buffer attributes are exclusively UBOs and
+     * push-constants — safe to parse without confusing vertex buffers.
+     *
+     * <p>Bindings are merged by (kind, index, name): if the same resource
+     * appears in both stages, the stage masks are OR-ed so it can be bound in
+     * a single {@code setBuffer}/{@code setTexture} call. If two different
+     * resources share an index (Metal vertex/fragment index tables are
+     * independent), they stay separate and are each bound to their own stage.
+     *
+     * @param vertexMsl   the compiled vertex MSL source
+     * @param fragmentMsl the compiled fragment MSL source
+     * @return an unmodifiable list of reflected bindings
+     */
+    private static List<IrisResourceBinding> reflectBindings(final String vertexMsl, final String fragmentMsl) {
+        final Map<String, IrisResourceBinding> byKey = new HashMap<>();
+        collectBindings(vertexMsl, MetalCompiledRenderPipeline.STAGE_VERTEX, byKey);
+        collectBindings(fragmentMsl, MetalCompiledRenderPipeline.STAGE_FRAGMENT, byKey);
+        return List.copyOf(byKey.values());
+    }
+
+    private static void collectBindings(
+            final String msl,
+            final int stageFlag,
+            final Map<String, IrisResourceBinding> byKey
+    ) {
+        collectOne(msl, stageFlag, IrisResourceKind.UNIFORM_BUFFER, MSL_BUFFER_BINDING_PATTERN, byKey);
+        collectOne(msl, stageFlag, IrisResourceKind.TEXTURE, MSL_TEXTURE_BINDING_PATTERN, byKey);
+        collectOne(msl, stageFlag, IrisResourceKind.SAMPLER, MSL_SAMPLER_BINDING_PATTERN, byKey);
+    }
+
+    private static void collectOne(
+            final String msl,
+            final int stageFlag,
+            final IrisResourceKind kind,
+            final Pattern pattern,
+            final Map<String, IrisResourceBinding> byKey
+    ) {
+        final Matcher matcher = pattern.matcher(msl);
+        while (matcher.find()) {
+            final String name = matcher.group(1);
+            final int index = Integer.parseInt(matcher.group(2));
+            final String key = kind.ordinal() + ":" + index + ":" + name;
+            final IrisResourceBinding existing = byKey.get(key);
+            if (existing == null) {
+                byKey.put(key, new IrisResourceBinding(kind, name, index, stageFlag));
+            } else {
+                byKey.put(key, new IrisResourceBinding(kind, name, index, existing.stageMask() | stageFlag));
+            }
+        }
+    }
+
     String name() {
         return name;
     }
@@ -403,6 +530,18 @@ final class MetalIrisPipeline implements AutoCloseable {
 
     float depthBiasScaleFactor() {
         return depthBiasScaleFactor;
+    }
+
+    /**
+     * Returns the reflected MSL resource bindings (M5d-2). Each entry describes
+     * one {@code [[buffer(N)]]} / {@code [[texture(N)]]} /
+     * {@code [[sampler(N)]]} attribute in the compiled vertex/fragment MSL,
+     * with the stage(s) it appears in. {@code MetalRenderPass.bindDrawState}
+     * consumes the {@link IrisResourceKind#UNIFORM_BUFFER} entries to bind Iris
+     * UBOs (M5d-2); texture/sampler entries are bound in M5d-3.
+     */
+    List<IrisResourceBinding> bindings() {
+        return this.bindings;
     }
 
     @Override
