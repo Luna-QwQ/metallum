@@ -1,5 +1,5 @@
 # MetalUniversal
-> 本项目基于 [metallum](https://github.com/kokodio/metallum) 开发，为原项目的 Fork 迭代版本，在保留原有 Metal 渲染后端能力的基础上，新增了对 iOS 平台的完整支持
+> 本项目基于 [Metallum](https://github.com/kokodio/metallum) 开发，为原项目的 Fork 迭代版本，在保留原有 Metal 渲染后端能力的基础上，新增了对 iOS 平台的完整支持
 
 MetalUniversal 是一个基于 Apple Metal API 的 Minecraft 渲染后端模组（Fabric Mod），用于在 macOS 和 iOS 上替代 OpenGL/Vulkan 渲染路径，为 Apple Silicon 和 iOS 设备提供更高效的 GPU 渲染。
 
