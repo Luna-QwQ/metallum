@@ -42,6 +42,8 @@ final class MetalDevice implements GpuDeviceBackend {
     private final Map<RenderPipeline, MetalCompiledRenderPipeline> compiledPipelines = new IdentityHashMap<>();
     private final Map<ShaderCompilationKey, IntermediaryShaderModule> shaderCache = new HashMap<>();
     private final Map<MslFunctionKey, MemorySegment> functionCache = new HashMap<>();
+    private final Map<Long, Deque<MemorySegment>> bufferPool = new HashMap<>();
+    private static final int MAX_POOLED_BUFFERS_PER_SIZE = 16;
     private ShaderSource activeShaderSource;
 
     MetalDevice(
@@ -177,6 +179,7 @@ final class MetalDevice implements GpuDeviceBackend {
         this.waitForSubmittedGpuWork();
         this.commandEncoder.close();
         this.clearPipelineCache();
+        this.drainBufferPool();
         try {
             MetalNativeBridge.metallum_NSView_clearLayer(this.cocoaView);
         } catch (Throwable ignored) {
@@ -210,6 +213,40 @@ final class MetalDevice implements GpuDeviceBackend {
 
     void queueResourceRelease(final MemorySegment handle) {
         this.commandEncoder.queueForDestroy(() -> MetalNativeBridge.metallum_release_object(handle));
+    }
+
+    MemorySegment tryAcquirePooledBuffer(final long size, final long resourceOptions) {
+        long key = composePoolKey(size, resourceOptions);
+        Deque<MemorySegment> bucket = bufferPool.get(key);
+        if (bucket != null && !bucket.isEmpty()) {
+            return bucket.pop();
+        }
+        return MemorySegment.NULL;
+    }
+
+    void queueBufferRelease(final MemorySegment handle, final long size, final long resourceOptions) {
+        this.commandEncoder.queueForDestroy(() -> {
+            long key = composePoolKey(size, resourceOptions);
+            Deque<MemorySegment> bucket = bufferPool.computeIfAbsent(key, k -> new ArrayDeque<>());
+            if (bucket.size() < MAX_POOLED_BUFFERS_PER_SIZE) {
+                bucket.push(handle);
+            } else {
+                MetalNativeBridge.metallum_release_object(handle);
+            }
+        });
+    }
+
+    private static long composePoolKey(final long size, final long resourceOptions) {
+        return (size << 12) | (resourceOptions & 0xFFFL);
+    }
+
+    private void drainBufferPool() {
+        for (Deque<MemorySegment> bucket : bufferPool.values()) {
+            for (MemorySegment handle : bucket) {
+                MetalNativeBridge.metallum_release_object(handle);
+            }
+        }
+        bufferPool.clear();
     }
 
     MetalCompiledRenderPipeline getOrCompilePipeline(final RenderPipeline pipeline) {

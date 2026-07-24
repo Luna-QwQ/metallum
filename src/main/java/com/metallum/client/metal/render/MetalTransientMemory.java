@@ -24,7 +24,7 @@ import java.util.stream.IntStream;
 final class MetalTransientMemory implements TransientMemory {
     private static final long BLOCK_SIZE = 524288L;
     private static final long MAX_CPU_ALIGNMENT = 16L;
-    private static final long MAX_GPU_ALIGNMENT = Long.highestOneBit(Long.MAX_VALUE);
+    private static final long MAX_GPU_ALIGNMENT = 256L;
     private static final int BLOCK_USAGE = GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_MAP_WRITE;
 
     private final MetalDevice device;
